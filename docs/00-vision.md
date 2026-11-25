@@ -6,7 +6,7 @@ Examples:
 - A Github repo, another a website, another a tweet. Basically each item like that gets an entry.
 - We should also allow for compound entries. If the reference is for a particular game, inside might be screenshots and videos. We should be also able to organize further within this (like if some screenshots are gameplay, others UX, etc)
 
-The store be in a regular filesystem so it can backed up on OneDrive or a NAS or even just a drive on my PC. It should also allow for connecting GitHub repos. All stores should seamlessly work together (at most we could sort/filter by stores).
+The store be in a regular filesystem so it can backed up on OneDrive, a NAS, or even just a drive on my PC. It should also allow for connecting GitHub repos so individual projects can have their own stores. All stores should seamlessly work together (at most we could sort/filter by stores).
 
 References are captured by users through the app (by adding links, etc) or by agents filling it out. If its added by a user with just a link (or just a name, etc) then we can configure something to auto populate some information.
 
