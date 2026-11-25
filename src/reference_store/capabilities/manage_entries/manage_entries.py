@@ -5,7 +5,7 @@ from pathlib import Path
 import shutil
 import uuid
 
-from reference_store.core import disk, entries, names, new_files, stores
+from reference_store.core import changes, disk, entries, names, new_files, stores
 from reference_store.core.catalog import catalog
 from reference_store.core.entries import ENTRY_FILE, EntryRecord, PreviewRecord
 from reference_store.models import Entry, NewFile, NewPreview, NotGiven, ReferenceStoreError, Store
@@ -54,6 +54,7 @@ def add_entry(
                 "or another store."
             )
         placings = new_files.planned(folder, files or [])
+        stores.check_sizes(target, [placing.source for placing in placings])
         new_files.describe(record, placings)
         if preview is not None and preview.file is not None:
             paths = [placing.path for placing in placings]
@@ -70,7 +71,7 @@ def add_entry(
             shutil.rmtree(folder, ignore_errors=True)
             raise
         new_files.finish_moves(placings)
-    catalog.changed(target, name)
+    changes.made(target, name)
     return entries.entry_of(target, folder, record)
 
 
@@ -102,7 +103,7 @@ def update_entry(
     if not isinstance(rating, NotGiven):
         entries.check_rating(rating)
     adding, removing = entries.tag_changes(add_tags, remove_tags)
-    target, folder = entries.find(name, store)
+    target, folder = entries.find_to_change(name, store)
     image = None
     if isinstance(preview, NewPreview):
         if preview.source is not None and preview.file is not None:
@@ -135,13 +136,13 @@ def update_entry(
         # A copied-in preview is the library's own file, so it goes once nothing uses it.
         if old_copy is not None and (record.preview is None or names.key(record.preview.file) != names.key(old_copy)):
             (folder / old_copy).unlink(missing_ok=True)
-    catalog.changed(target, folder.name)
+    changes.made(target, folder.name)
     return entries.entry_of(target, folder, record)
 
 
 def delete_entry(name: str, store: str | None) -> None:
     """Deletes the entry's folder and everything in it."""
-    target, folder = entries.find(name, store)
+    target, folder = entries.find_to_change(name, store)
     with entries.locked(folder):
         if not (folder / ENTRY_FILE).is_file():
             raise ReferenceStoreError(f"There is no entry named {folder.name} in the store {target.name} anymore.")
@@ -152,10 +153,16 @@ def delete_entry(name: str, store: str | None) -> None:
                 f"Couldn't delete {folder.name} from the store {target.name}: {error.strerror or error}. A file in it "
                 "may be open in another program. Close it and try again. Nothing was deleted."
             ) from None
-    catalog.changed(target, folder.name)
+    changes.made(target, folder.name)
 
 
 def _store_to_add_to(store: str | None) -> Store:
+    target = _store_named_or_usual(store)
+    stores.check_can_change(target)
+    return target
+
+
+def _store_named_or_usual(store: str | None) -> Store:
     if store is not None:
         return stores.find_store(store)
     listed = stores.list_stores()

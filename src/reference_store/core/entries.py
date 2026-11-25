@@ -77,6 +77,17 @@ def find(name: str, store: str | None) -> tuple[Store, Path]:
     raise ReferenceStoreError(f"There is no entry named {name} in {where}.")
 
 
+def find_to_change(name: str, store: str | None) -> tuple[Store, Path]:
+    """Returns the store and folder of an entry that is about to be changed, as `find` does.
+
+    Raises:
+        ReferenceStoreError: There is no such entry, or its store can only be read.
+    """
+    target, folder = find(name, store)
+    stores.check_can_change(target)
+    return target, folder
+
+
 def entries_in(store: Store) -> Iterator[Entry]:
     """Yields each entry in the store, in the order of their names.
 

@@ -26,6 +26,7 @@ class StoreRecord(BaseModel):
     name: str
     location: str
     priority_order: int
+    push: bool = False
 
 
 class SiteRule(BaseModel):
@@ -63,13 +64,9 @@ def locked(name: str) -> Generator[None]:
     Raises:
         ReferenceStoreError: Another process held it for longer than `LOCK_SECONDS`.
     """
-    path = home() / LOCKS / f"{name}.lock"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # One instance per file, so a thread that already holds the lock can take it again, as reading an entry does
-    # while the entry is being changed.
-    lock = FileLock(path, timeout=LOCK_SECONDS, is_singleton=True)
+    lock = lock_named(name)
     try:
-        lock.acquire()
+        lock.acquire(timeout=LOCK_SECONDS)
     except Timeout:
         raise ReferenceStoreError(
             f"Another process has been changing the same thing for over {LOCK_SECONDS} seconds. Try again once it is "
@@ -79,6 +76,15 @@ def locked(name: str) -> Generator[None]:
         yield
     finally:
         lock.release()
+
+
+def lock_named(name: str) -> FileLock:
+    """Returns the lock called `name`, for a caller that waits for it in its own way."""
+    path = home() / LOCKS / f"{name}.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # One instance per file, so a thread that already holds the lock can take it again, as reading an entry does
+    # while the entry is being changed.
+    return FileLock(path, is_singleton=True)
 
 
 def read() -> Config:

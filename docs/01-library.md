@@ -17,15 +17,16 @@ class Store(BaseModel):
     default: bool
     priority_order: int  # 1 is the highest, and 0 is the project's store
     available: bool  # False when it can't be reached, such as a NAS that is offline
+    push: bool  # its changes are committed and pushed to GitHub
+    read_only: bool  # a clone of a repository that isn't pushed to, which can't be changed
+    synced: datetime | None  # when it last synced with GitHub
+    sync_error: str | None  # what went wrong the last time it synced, if it did
 ```
 
 A project can have its own store: a `.reference-store` folder in the project.
 It is found by looking in the current directory and then in each folder above it, so inside the project it is used without being registered.
 It is named after the project's folder, and comes before every other store.
 To use it from anywhere else, such as the app, register the same folder with `add_store`. It then goes by the name it was registered with, and inside the project it still comes first.
-
-A GitHub store is kept as a clone on the machine, so its files have real paths like any other store's.
-GitHub refuses files over 100 MB, so adding or moving one into a GitHub store is refused with an error that names the file. Put it in a directory store instead.
 
 Most functions take an optional `store`. Without it:
 
@@ -35,15 +36,41 @@ Most functions take an optional `store`. Without it:
 
 A store that is not available is skipped. Naming it in `store` raises.
 
+### Stores on GitHub
+
+A store can be kept in a GitHub repository, in one of two ways. Which one is said when the store is added, with `push`.
+
+- Pushed: the repository is nothing but a store, shared by every device that adds it. The library commits each change and pushes it, and pulls what the other devices pushed. It does this in the background, so no call waits for the network, and what is changed offline goes up later.
+- Not pushed: the repository is cloned to be read, and can't be changed. This is for a project's repository, where the store is the `.reference-store` folder beside the code. Only that folder is downloaded.
+
+A pushed store is a quick way to share a small store between devices. It is not for everything:
+
+- Big files don't belong in one. GitHub refuses a file over 100 MB, and recommends a repository stay under 1 GB. A deleted file stays in the repository's history, so the repository only grows.
+- Neither do rapid changes. Each sync is a commit and a push that takes a few seconds, and two devices changing the same thing at once are merged by rule, not by anyone looking.
+- For a large store, or one with video and other heavy media, use a folder on a drive, a NAS, or OneDrive. [`move_entry`](#move_entry) takes an entry from one store to another.
+
+The library never commits to a project's repository. Where the project is checked out, register its folder as a store. The library writes the files, and they wait there to be committed with the code.
+
+`git` has to be installed and signed in to GitHub. The library keeps no token.
+
+- A clone made from a URL is in `stores/` in the [configuration](#configuration) folder, so its files have real paths like any other store's.
+- A folder that is already a clone of the repository can be added with `push` too, which keeps a pushed store on a drive of your choosing.
+- A store syncs after every change to it, and when it is read and hasn't synced in 3 hours or its last sync failed. [`sync_store`](#sync_store) syncs it now.
+- Files added by hand in a pushed store's folder are pushed with the next sync.
+- When two devices changed the same entry, both changes are kept. A field both changed, or a file both changed, is the one changed later. The repository's history has both.
+- GitHub refuses files over 100 MB, so adding or moving one into a pushed store is refused with an error that names the file. Put it in a store that isn't pushed.
+- A file like that added by hand is left out of what is pushed, and so is a folder that is a git repository of its own. `sync_store` lists them.
+
 ### `add_store`
 
 ```python
-def add_store(name: str, location: str, default: bool = False) -> Store
+def add_store(name: str, location: str, default: bool = False, push: bool = False) -> Store
 ```
 
 Registers a store on this machine. The first store added is the default, and a new store gets the lowest priority.
 
 - `location`: a directory path or a GitHub repository URL. An empty or missing directory becomes a new store, and one that already holds a store is connected as it is. A directory with other things in it becomes a store too, and they are left alone. A project's folder, one with a `.reference-store` in it, registers that store.
+- `push`: commit the store's changes and push them to GitHub, as [Stores on GitHub](#stores-on-github) says. It takes a GitHub URL, or a folder that is a clone of the repository. The repository has to be one you can push to, and nothing but a store. One that holds no store yet is made one. Without `push`, a GitHub URL has to hold a store already: at its top, or in a `.reference-store` folder.
 
 ### `list_stores`
 
@@ -75,7 +102,26 @@ Gives a store a place in the order, from 1 to the number of stores, and returns 
 def remove_store(name: str) -> None
 ```
 
-Unregisters a store. Nothing in it is deleted. When it was the default, the store with the highest priority left becomes the default.
+Unregisters a store. Nothing in a folder is deleted. When it was the default, the store with the highest priority left becomes the default.
+
+The clone of a store added by its GitHub URL is deleted, since the repository has what was in it. A pushed store with changes that aren't on GitHub yet raises instead.
+
+### `sync_store`
+
+```python
+def sync_store(store: str | None = None) -> list[StoreSync]
+
+
+class StoreSync(BaseModel):
+    store: str
+    pulled: int  # commits that came from GitHub
+    pushed: int  # commits that went to it
+    left_out: list[str]  # what is in the store but can't be pushed
+    error: str | None  # None when it worked
+```
+
+Syncs a store with GitHub now, or every store kept there. Stores sync by themselves, so this is only for not waiting, or for seeing why a sync failed.
+A sync that fails says why in `error`, and nothing is raised.
 
 ## Entries
 
@@ -708,7 +754,7 @@ Set `REFERENCE_STORE_HOME` to use another folder.
 - `processors/` is where processors run, and where their scripts are kept.
 - `index/` is what makes [large stores](#large-stores) quick to list. Deleting it is safe, since the next read makes it again.
 - `locks/` keeps two processes from changing the same thing at once.
-- `stores/` has the clones of GitHub stores.
+- `stores/` has the clones of stores added by a GitHub URL.
 
 A project's store is not in `config.json`. Its `.reference-store` folder is all there is to it.
 
@@ -716,8 +762,8 @@ A project's store is not in `config.json`. Its `.reference-store` folder is all 
 {
   "default_store": "main",
   "stores": [
-    {"name": "main", "location": "D:/references", "priority_order": 1},
-    {"name": "shared", "location": "https://github.com/<owner>/<repo>", "priority_order": 2}
+    {"name": "main", "location": "D:/references", "priority_order": 1, "push": false},
+    {"name": "shared", "location": "https://github.com/<owner>/<repo>", "priority_order": 2, "push": true}
   ],
   "sites": {
     "substack.com": {"pattern": "(?P<group>[^./]+)\\.substack\\.com"},

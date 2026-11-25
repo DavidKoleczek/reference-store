@@ -3,25 +3,25 @@
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
-from reference_store.core import disk, entries, names, new_files
-from reference_store.core.catalog import catalog
+from reference_store.core import changes, disk, entries, names, new_files, stores
 from reference_store.core.entries import EntryRecord
 from reference_store.models import Entry, NewFile, NotGiven, ReferenceStoreError
 
 
 def add_files(name: str, files: list[NewFile], store: str | None) -> Entry:
     """Copies or moves files and folders into an entry, all of them or none."""
-    target, folder = entries.find(name, store)
+    target, folder = entries.find_to_change(name, store)
     with entries.locked(folder):
         record = entries.read(folder)
         placings = new_files.planned(folder, files)
+        stores.check_sizes(target, [placing.source for placing in placings])
         if placings:
             new_files.describe(record, placings)
             record.updated = entries.in_utc(datetime.now(UTC))
             with new_files.placed(folder, placings):
                 entries.write(folder, record)
             new_files.finish_moves(placings)
-    catalog.changed(target, folder.name)
+    changes.made(target, folder.name)
     return entries.entry_of(target, folder, record)
 
 
@@ -36,7 +36,7 @@ def update_file(
 ) -> Entry:
     """Changes what is said about a file, or the tags of every file in a folder."""
     adding, removing = entries.tag_changes(add_tags, remove_tags)
-    target, folder = entries.find(name, store)
+    target, folder = entries.find_to_change(name, store)
     with entries.locked(folder):
         record = entries.read(folder)
         found = _found(folder, path)
@@ -57,13 +57,13 @@ def update_file(
         if record != before:
             record.updated = entries.in_utc(datetime.now(UTC))
             entries.write(folder, record)
-    catalog.changed(target, folder.name)
+    changes.made(target, folder.name)
     return entries.entry_of(target, folder, record)
 
 
 def rename_file(name: str, path: str, new_path: str, store: str | None) -> Entry:
     """Renames a file or a folder in an entry, or moves it to another folder there, with what was said about it."""
-    target, folder = entries.find(name, store)
+    target, folder = entries.find_to_change(name, store)
     with entries.locked(folder):
         record = entries.read(folder)
         found = _found(folder, path)
@@ -99,13 +99,13 @@ def rename_file(name: str, path: str, new_path: str, store: str | None) -> Entry
         _delete_emptied(folder, old)
         record.updated = entries.in_utc(datetime.now(UTC))
         entries.write(folder, record)
-    catalog.changed(target, folder.name)
+    changes.made(target, folder.name)
     return entries.entry_of(target, folder, record)
 
 
 def delete_file(name: str, path: str, store: str | None) -> Entry:
     """Deletes a file, or a folder and everything in it, from an entry."""
-    target, folder = entries.find(name, store)
+    target, folder = entries.find_to_change(name, store)
     with entries.locked(folder):
         record = entries.read(folder)
         found = _found(folder, path)
@@ -126,7 +126,7 @@ def delete_file(name: str, path: str, store: str | None) -> Entry:
         _delete_emptied(folder, old)
         record.updated = entries.in_utc(datetime.now(UTC))
         entries.write(folder, record)
-    catalog.changed(target, folder.name)
+    changes.made(target, folder.name)
     return entries.entry_of(target, folder, record)
 
 

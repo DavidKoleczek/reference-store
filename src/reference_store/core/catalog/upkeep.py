@@ -15,11 +15,9 @@ import json
 import os
 from pathlib import Path
 import sqlite3
-import subprocess
-import sys
 import time
 
-from reference_store.core import config, entries, names
+from reference_store.core import detached, entries, names
 from reference_store.core.catalog import index
 from reference_store.core.catalog.index import EntryRow, FileRow
 from reference_store.core.entries import ENTRY_FILE, Found
@@ -209,35 +207,4 @@ def _seen(found: list[Found]) -> str:
 
 def _start_check(folders: list[Path]) -> None:
     """Starts a process that checks the stores in these folders, and goes on after this one ends."""
-    command = [sys.executable, "-m", CHECK_MODULE, *(str(folder) for folder in folders)]
-    # It runs from the index's folder, so it doesn't keep the folder this process runs in from being deleted, and
-    # finds the same configuration from there.
-    home = config.home()
-    try:
-        if sys.platform == "win32":
-            # A console of its own with no window. With no console at all, the Python a virtual environment's
-            # python.exe starts opens one that shows on the desktop.
-            apart = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-            try:
-                # Out of the job this process is in, which can end every process in it once its first one is done.
-                _started(command, home, apart | subprocess.CREATE_BREAKAWAY_FROM_JOB)
-            except OSError:
-                _started(command, home, apart)
-        else:
-            _started(command, home, 0)
-    except OSError:
-        # The read that started it has its answer either way, and a later read starts the check again.
-        return
-
-
-def _started(command: list[str], home: Path, creation_flags: int) -> None:
-    subprocess.Popen(
-        command,
-        cwd=index.location().parent,
-        env={**os.environ, config.HOME_VARIABLE: str(home)},
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=creation_flags,
-        start_new_session=sys.platform != "win32",
-    )
+    detached.start(CHECK_MODULE, [str(folder) for folder in folders])

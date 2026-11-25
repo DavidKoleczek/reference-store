@@ -10,6 +10,7 @@ from reference_store.capabilities.manage_entries import manage_entries, relocate
 from reference_store.capabilities.manage_files import manage_files
 from reference_store.capabilities.manage_stores import manage_stores
 from reference_store.capabilities.search import search
+from reference_store.capabilities.sync_stores import sync_stores
 from reference_store.core import stores
 from reference_store.core.catalog import catalog
 from reference_store.models import (
@@ -25,6 +26,7 @@ from reference_store.models import (
     NotGiven,
     SiteCount,
     Store,
+    StoreSync,
     TagCount,
     TagMatch,
 )
@@ -34,20 +36,27 @@ if TYPE_CHECKING:
     from reference_store.app.server import AppServer
 
 
-def add_store(name: str, location: str, default: bool = False) -> Store:
+def add_store(name: str, location: str, default: bool = False, push: bool = False) -> Store:
     """Registers a store on this machine.
 
-    `location` is a folder. An empty or missing folder becomes a new store, and one that already holds a store is
-    connected as it is. A folder with other things in it becomes a store too, and they are left alone. A project's
-    folder, one with a `.reference-store` store in it, registers that store.
+    `location` is a folder, or the URL of a repository on GitHub. An empty or missing folder becomes a new store, and
+    one that already holds a store is connected as it is. A folder with other things in it becomes a store too, and
+    they are left alone. A project's folder, one with a `.reference-store` store in it, registers that store.
+
+    A repository on GitHub is cloned, which needs `git` installed and signed in. With `push`, the library commits
+    every change to the store and pushes it, and pulls what other devices pushed, all in the background. The
+    repository has to be nothing but a store, and one that holds no store yet is made one. A folder can be added with
+    `push` too, when it is a clone of such a repository. A pushed store is a quick way to share a small store between
+    devices, and not for big files or rapid changes. Without `push`, a repository is cloned to be read, and can't
+    be changed. It has to hold a store, at its top or in a project's `.reference-store` folder.
 
     The first store added is the default, and a new store gets the lowest priority.
 
     Raises:
-        ReferenceStoreError: The name breaks a rule or is taken, the folder is registered already, or it can't be made
-            into a store.
+        ReferenceStoreError: The name breaks a rule or is taken, the location is registered already, it can't be made
+            into a store, or it was to be pushed and can't be.
     """
-    return manage_stores.add_store(name, location, default)
+    return manage_stores.add_store(name, location, default, push)
 
 
 def list_stores() -> list[Store]:
@@ -79,14 +88,30 @@ def set_store_priority(name: str, priority_order: int) -> list[Store]:
 
 
 def remove_store(name: str) -> None:
-    """Unregisters a store. Nothing in it is deleted.
+    """Unregisters a store. Nothing in a folder is deleted.
 
-    When it was the default, the store with the highest priority left becomes the default.
+    The clone of a store added by its GitHub URL is deleted, since the repository has what was in it. When it was the
+    default, the store with the highest priority left becomes the default.
 
     Raises:
-        ReferenceStoreError: There is no registered store with that name.
+        ReferenceStoreError: There is no registered store with that name, or it has changes that aren't on GitHub yet.
     """
     manage_stores.remove_store(name)
+
+
+def sync_store(store: str | None = None) -> list[StoreSync]:
+    """Syncs a store with its repository on GitHub now, or every store that has one, and returns how each went.
+
+    A store that is pushed has what changed in it committed, what other devices pushed merged in, and the result
+    pushed. One that isn't pushed is made the same as GitHub has it. This happens in the background after every
+    change, and when a store is read that hasn't synced in a few hours, so calling it is only for not waiting.
+
+    A sync that fails says why in `error`, and raises nothing.
+
+    Raises:
+        ReferenceStoreError: The store named can't be used, or isn't kept on GitHub.
+    """
+    return sync_stores.sync_store(store)
 
 
 def add_entry(

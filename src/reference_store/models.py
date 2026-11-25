@@ -31,6 +31,20 @@ class Store(BaseModel):
     default: bool
     priority_order: int  # 1 is the highest, and 0 is the project's store
     available: bool  # False when it can't be reached, such as a NAS that is offline
+    push: bool = False  # its changes are committed and pushed to GitHub
+    read_only: bool = False  # a clone of a repository that isn't pushed to, which can't be changed
+    synced: datetime | None = None  # when it was last in step with GitHub
+    sync_error: str | None = None  # what went wrong the last time it synced, if it did
+
+
+class StoreSync(BaseModel):
+    """How syncing a store with GitHub went."""
+
+    store: str
+    pulled: int  # commits that came from GitHub
+    pushed: int  # commits that went to it
+    left_out: list[str]  # what is in the store but can't be pushed
+    error: str | None  # None when it worked
 
 
 class NewPreview(BaseModel):

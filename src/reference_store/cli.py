@@ -25,12 +25,14 @@ from reference_store.models import (
     ReferenceStoreError,
     SiteCount,
     Store,
+    StoreSync,
     TagCount,
 )
 from reference_store.skill.skill import DISTRIBUTION
 
 JSON_HELP = "Print the result as JSON."
 STORES = TypeAdapter(list[Store])
+SYNCS = TypeAdapter(list[StoreSync])
 TAGS = TypeAdapter(list[TagCount])
 SITES = TypeAdapter(list[SiteCount])
 SIZE_UNITS = ("bytes", "KB", "MB", "GB", "TB")
@@ -93,12 +95,29 @@ def _describe_store(store: Store) -> str:
         for mark, shown in (
             ("project", store.priority_order == 0),
             ("default", store.default),
+            ("pushed", store.push),
+            ("read only", store.read_only),
             ("not available", not store.available),
         )
         if shown
     ]
     flags = f" ({', '.join(marks)})" if marks else ""
-    return f"{store.priority_order}. {store.name}{flags}: {store.path}"
+    lines = [f"{store.priority_order}. {store.name}{flags}: {store.path}"]
+    if store.kind == "github":
+        lines.append(f"   from {store.location}")
+    if store.synced is not None:
+        lines.append(f"   synced {store.synced.astimezone():%Y-%m-%d %H:%M}")
+    if store.sync_error is not None:
+        lines.append(f"   the last sync failed: {store.sync_error}")
+    return "\n".join(lines)
+
+
+def _describe_sync(sync: StoreSync) -> str:
+    if sync.error is not None:
+        return f"{sync.store}: couldn't sync. {sync.error}"
+    lines = [f"{sync.store}: pulled {_counted(sync.pulled, 'commit', 'commits')}, pushed {sync.pushed}."]
+    lines += [f"   can't be pushed: {path}" for path in sync.left_out]
+    return "\n".join(lines)
 
 
 def _print_stores(stores: list[Store], json: bool) -> None:
@@ -225,9 +244,22 @@ def cli(
 @app.command()
 def add_store(
     name: Annotated[str, typer.Argument(help="What to call the store, such as main.")],
-    location: Annotated[str, typer.Argument(help="The store's folder. One that doesn't exist yet is made.")],
+    location: Annotated[
+        str,
+        typer.Argument(
+            help="The store's folder, or the URL of a repository on GitHub. A folder that doesn't exist yet is made."
+        ),
+    ],
     default: Annotated[
         bool, typer.Option("--default", help="Make it the default store, where new entries go.")
+    ] = False,
+    push: Annotated[
+        bool,
+        typer.Option(
+            "--push",
+            help="Commit every change to the store and push it to GitHub, in the background. For a repository that is "
+            "nothing but a store, and a small one: not for big files or rapid changes.",
+        ),
     ] = False,
     json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
 ) -> None:
@@ -236,9 +268,11 @@ def add_store(
     An empty or missing folder becomes a new store, and one that already holds a store is connected as it is. A folder with other things in it becomes a store too, and they are left alone.
 
     A project's folder, one with a .reference-store store in it, registers that store. The first store added is the default.
+
+    A repository on GitHub is cloned with git, which has to be installed and signed in. With --push it is a store every device shares. Without it, the repository is only read, and has to hold a store already.
     """
     with _reported():
-        store = lib.add_store(name, location, default)
+        store = lib.add_store(name, location, default, push)
     typer.echo(store.model_dump_json(indent=2) if json else _describe_store(store))
 
 
@@ -278,13 +312,43 @@ def set_store_priority(
 
 @app.command()
 def remove_store(name: Annotated[str, typer.Argument(help="The store's name.")]) -> None:
-    """Unregister a store. Nothing in it is deleted.
+    """Unregister a store. Nothing in a folder is deleted.
 
-    When it was the default, the store with the highest priority left becomes the default.
+    The clone of a store added by its GitHub URL is deleted, once everything in it is on GitHub. When the store was the default, the store with the highest priority left becomes the default.
     """
     with _reported():
+        kind = next((store.kind for store in lib.list_stores() if store.name.casefold() == name.casefold()), None)
         lib.remove_store(name)
-    typer.echo(f"Removed the store {name}. Its files are left as they are.")
+    left = (
+        "Its clone is deleted, and GitHub has what was in it."
+        if kind == "github"
+        else "Its files are left as they are."
+    )
+    typer.echo(f"Removed the store {name}. {left}")
+
+
+@app.command()
+def sync_store(
+    store: Annotated[
+        str | None, typer.Option(help="Sync only this store. Without it, every store kept on GitHub.")
+    ] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """Sync stores with GitHub now.
+
+    This happens in the background after every change, and when a store is read that hasn't synced in a few hours. Run it to not wait, or to see why a sync failed. It exits with 1 when a store couldn't be synced.
+    """
+    with _reported():
+        syncs = lib.sync_store(store)
+    if json:
+        typer.echo(SYNCS.dump_json(syncs, indent=2).decode())
+    elif syncs:
+        for sync in syncs:
+            typer.echo(_describe_sync(sync))
+    else:
+        typer.echo("No store is kept on GitHub.")
+    if any(sync.error for sync in syncs):
+        raise typer.Exit(1)
 
 
 @app.command()

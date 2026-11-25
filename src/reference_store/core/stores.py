@@ -1,16 +1,26 @@
 """The stores on this machine: those registered, and the project's own store."""
 
+from collections.abc import Iterable
+from datetime import UTC, datetime
 import json
 import os
 from pathlib import Path
+import re
 
 from reference_store.core import config, disk, names
 from reference_store.core.config import Config, StoreRecord
+from reference_store.core.remotes import background, status
 from reference_store.models import ReferenceStoreError, Store
 
 STORE_FILE = ".store.json"
 STORE_VERSION = 1
 PROJECT_FOLDER = ".reference-store"
+CLONES = "stores"
+GITHUB = re.compile(
+    r"(?:https?://github\.com/|git@github\.com:|github\.com/)(?P<repository>[^/\s]+/[^/\s]+?)(?:\.git)?/?"
+)
+# GitHub blocks a file larger than this.
+LARGEST_PUSHED_BYTES = 100 * 1024 * 1024
 
 
 def list_stores() -> list[Store]:
@@ -58,9 +68,11 @@ def searched(store: str | None) -> list[Store]:
     Raises:
         ReferenceStoreError: The store named can't be used.
     """
-    if store is not None:
-        return [find_store(store)]
-    return [each for each in list_stores() if each.available]
+    found = [find_store(store)] if store is not None else [each for each in list_stores() if each.available]
+    # Every call that reads or changes a store comes through here, so this is where one that hasn't synced with
+    # GitHub in a while is noticed.
+    background.read(found)
+    return found
 
 
 def project_folder() -> Path | None:
@@ -86,16 +98,79 @@ def make_store(path: Path) -> None:
 
 def store_of(record: StoreRecord, current: Config) -> Store:
     """Returns the registered store as callers see it."""
-    path = Path(record.location)
+    url = github_url(record.location)
+    if url is None:
+        path = Path(record.location)
+        available = (path / STORE_FILE).is_file()
+    else:
+        clone = clone_folder(record.name)
+        own = clone / PROJECT_FOLDER
+        # A project's repository has its store in a folder of it, and any other is a store itself.
+        path = own if own.is_dir() and not (clone / STORE_FILE).is_file() else clone
+        available = path.is_dir() and (clone / ".git").is_dir()
+    synced = record.push or url is not None
+    kept = status.read(status.root_of(path)) if synced and available else None
     return Store(
         name=record.name,
-        kind="directory",
+        kind="directory" if url is None else "github",
         location=record.location,
         path=path,
         default=record.name == current.default_store,
         priority_order=record.priority_order,
-        available=(path / STORE_FILE).is_file(),
+        available=available,
+        push=record.push,
+        read_only=url is not None and not record.push,
+        synced=datetime.fromtimestamp(int(kept.synced), UTC) if kept and kept.synced else None,
+        sync_error=kept.error if kept else None,
     )
+
+
+def github_url(location: str) -> str | None:
+    """Returns the repository on GitHub a location names, as the URL it is cloned from, or None for a folder."""
+    match = GITHUB.fullmatch(location.strip())
+    if match is None:
+        return None
+    if location.strip().startswith("git@"):
+        return f"git@github.com:{match['repository']}.git"
+    return f"https://github.com/{match['repository']}"
+
+
+def clone_folder(name: str) -> Path:
+    """Returns where the clone of the GitHub store with that name is kept."""
+    return config.home() / CLONES / name
+
+
+def check_can_change(store: Store) -> None:
+    """Raises when a store can only be read.
+
+    Raises:
+        ReferenceStoreError: The store is a clone of a repository that isn't pushed to.
+    """
+    if store.read_only:
+        raise ReferenceStoreError(
+            f"The store {store.name} is a copy of {store.location} that isn't pushed to, so it can only be read. "
+            "Change it in a folder where that repository is checked out, or use another store."
+        )
+
+
+def check_sizes(store: Store, files: Iterable[Path]) -> None:
+    """Raises when one of these files is too large for the store.
+
+    Raises:
+        ReferenceStoreError: The store is pushed to GitHub, which blocks a file that large.
+    """
+    if not store.push:
+        return
+    for file in files:
+        try:
+            size = file.stat().st_size
+        except OSError:
+            continue
+        if size > LARGEST_PUSHED_BYTES:
+            raise ReferenceStoreError(
+                f"{file} is over 100 MB, which GitHub refuses, so it can't go in the store {store.name}, which is "
+                "pushed there. Put it in a store that isn't."
+            )
 
 
 def record_named(current: Config, name: str) -> StoreRecord:

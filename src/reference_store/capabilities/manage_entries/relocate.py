@@ -3,8 +3,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from reference_store.core import disk, entries, names, stores
-from reference_store.core.catalog import catalog
+from reference_store.core import changes, disk, entries, names, stores
 from reference_store.core.entries import ENTRY_FILE
 from reference_store.models import Entry, ReferenceStoreError, Store
 
@@ -12,7 +11,7 @@ from reference_store.models import Entry, ReferenceStoreError, Store
 def rename_entry(name: str, new_name: str, store: str | None) -> Entry:
     """Renames the entry's folder. A name that only changes case is a rename too."""
     names.check_name(new_name, "an entry")
-    target, folder = entries.find(name, store)
+    target, folder = entries.find_to_change(name, store)
     if folder.name == new_name:
         return entries.entry_of(target, folder, entries.read(folder))
     return _relocated(target, folder, target, target.path / new_name, "the new name")
@@ -21,9 +20,11 @@ def rename_entry(name: str, new_name: str, store: str | None) -> Entry:
 def move_entry(name: str, to_store: str, store: str | None) -> Entry:
     """Moves the entry's folder to another store, under the same name."""
     destination = stores.find_store(to_store)
-    source, folder = entries.find(name, store)
+    stores.check_can_change(destination)
+    source, folder = entries.find_to_change(name, store)
     if stores.same_path(source.path, destination.path):
         raise ReferenceStoreError(f"{folder.name} is in the store {destination.name} already.")
+    stores.check_sizes(destination, (path for path in folder.rglob("*") if path.is_file()))
     return _relocated(source, folder, destination, destination.path / folder.name, "the entry's name")
 
 
@@ -51,8 +52,8 @@ def _relocated(source: Store, folder: Path, destination: Store, new_folder: Path
             ) from None
         record.updated = entries.in_utc(datetime.now(UTC))
         entries.write(new_folder, record)
-    catalog.changed(source, folder.name)
-    catalog.changed(destination, new_folder.name)
+    changes.made(source, folder.name)
+    changes.made(destination, new_folder.name)
     return entries.entry_of(destination, new_folder, record)
 
 

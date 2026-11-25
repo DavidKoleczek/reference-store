@@ -32,23 +32,37 @@ The commands use the same [configuration](01-library.md#configuration) as the li
 ## Stores
 
 ```
-reference-store add-store <name> <location> [--default]
+reference-store add-store <name> <location> [--default] [--push]
 reference-store list-stores
 reference-store set-default-store <name>
 reference-store set-store-priority <name> <priority-order>
 reference-store remove-store <name>
+reference-store sync-store [--store <store>]
 ```
 
-A store is printed as one line: its priority, its name, what is special about it, and its folder.
+A store is printed as its priority, its name, what is special about it, and its folder. One kept on GitHub has lines for its repository, when it last synced, and what went wrong if the last sync failed.
 
 ```console
 $ reference-store list-stores
 0. game-1 (project): C:\Projects\game-1\.reference-store
 1. main (default): D:\references
-2. shared (not available): \\nas\references
+2. nas (not available): \\nas\references
+3. shared (pushed): C:\Users\me\AppData\Roaming\reference-store\stores\shared
+   from https://github.com/<owner>/<repo>
+   synced 2026-01-05 18:30
 ```
 
 `add-store` and `set-default-store` print the store. `list-stores` and `set-store-priority` print every store. `remove-store` says the store was removed, and takes no `--json`.
+
+`--push` is for a small store shared between devices, not for big files or rapid changes. [Stores on GitHub](01-library.md#stores-on-github) says why.
+
+`sync-store` prints a line for each store kept on GitHub, then a line for each thing in it that can't be pushed. It exits 1 when a store couldn't be synced.
+
+```console
+$ reference-store sync-store
+shared: pulled 2 commits, pushed 1.
+   can't be pushed: game-1/videos/trailer.mp4
+```
 
 ## Entries
 
