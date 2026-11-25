@@ -6,11 +6,16 @@ References are kept as plain files, so a store can live on a drive, a NAS, OneDr
 
 ## Install
 
-You need [uv](https://docs.astral.sh/uv/getting-started/installation/) installed.
+You need [uv](https://docs.astral.sh/uv/getting-started/installation/) installed, and [Node.js](https://nodejs.org/) for `npx`.
 
 ```bash
+# Install the Agent Skill so your agent knows about it
+npx skills add DavidKoleczek/reference-store
+# Install the tool
 uv tool install git+https://github.com/DavidKoleczek/reference-store
 ```
+
+Then ask your agent to save a reference, or to find one.
 
 To use it as a library:
 
@@ -34,9 +39,6 @@ Stop-Process -Id (Get-NetTCPConnection -LocalPort 8790 -State Listen).OwningProc
 nohup reference-store app --port 8790 > /dev/null 2>&1 &
 # Stop it on bash
 pkill -f "reference-store app --port 8790"
-
-# Print the skill that tells an agent how to use the tool
-reference-store skill
 ```
 
 `reference-store -h` lists the commands.

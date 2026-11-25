@@ -4,12 +4,13 @@ from importlib.metadata import metadata, version
 from pathlib import Path
 
 DISTRIBUTION = "reference-store"
-SKILL_FILE = "SKILL.md"
+# The skill has a folder of its own, named after it, so that installing it copies nothing but the skill.
+SKILL_FILE = Path(__file__).resolve().parent / DISTRIBUTION / "SKILL.md"
 
 
 def tool_skill() -> str:
     """Returns the skill for the whole tool, as the SKILL.md file an agent keeps in its skills folder."""
-    return (Path(__file__).resolve().parent / SKILL_FILE).read_text(encoding="utf-8")
+    return SKILL_FILE.read_text(encoding="utf-8")
 
 
 def repository_url() -> str | None:

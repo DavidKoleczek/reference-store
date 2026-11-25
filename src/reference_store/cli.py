@@ -238,7 +238,12 @@ def cli(
         typer.Option("--version", "-V", is_eager=True, callback=_print_version, help="Print the version and exit."),
     ] = False,
 ) -> None:
-    """A place to store various references and useful content."""
+    """A place to store various references and useful content.
+
+    A store is a folder of entries, and an entry is one reference: what is said about it, and any files. The commands that list and search cover every store.
+
+    The skill command prints how to use the tool.
+    """
 
 
 @app.command()
@@ -312,7 +317,7 @@ def set_store_priority(
 
 @app.command()
 def remove_store(name: Annotated[str, typer.Argument(help="The store's name.")]) -> None:
-    """Unregister a store. Nothing in a folder is deleted.
+    """Unregister a store. The files of a store in a folder are left as they are.
 
     The clone of a store added by its GitHub URL is deleted, once everything in it is on GitHub. When the store was the default, the store with the highest priority left becomes the default.
     """
@@ -357,7 +362,9 @@ def add_entry(
     title: Annotated[str | None, typer.Option(help="A title the name can't be, such as one with a colon.")] = None,
     description: Annotated[str, typer.Option(help="What the reference is.")] = "",
     url: Annotated[str | None, typer.Option(help="The reference's link.")] = None,
-    tag: Annotated[list[str] | None, typer.Option(help="A tag. Repeat it for each one.")] = None,
+    tag: Annotated[
+        list[str] | None, typer.Option(help="A tag. Repeat it for each one. list-tags has the ones in use.")
+    ] = None,
     notes: Annotated[str, typer.Option(help="Anything else, such as why it was saved.")] = "",
     rating: Annotated[int | None, typer.Option(help="From 1 to 5, where 5 is the best.")] = None,
     preview: Annotated[Path | None, typer.Option(help="An image to copy in as the entry's preview.")] = None,
@@ -424,7 +431,12 @@ def update_entry(
     add_tag: Annotated[list[str] | None, typer.Option(help="A tag to add. Repeat it for each one.")] = None,
     remove_tag: Annotated[list[str] | None, typer.Option(help="A tag to remove. Repeat it for each one.")] = None,
     clear: Annotated[
-        list[Clearable] | None, typer.Option(help="A field to clear. Repeat it for each one.", show_default=False)
+        list[Clearable] | None,
+        typer.Option(
+            metavar="<list[field]>",
+            help="A field to clear: title, description, url, notes, rating, or preview. Repeat it for each one.",
+            show_default=False,
+        ),
     ] = None,
     store: Annotated[
         str | None,
@@ -544,10 +556,19 @@ def list_entries(
     store: Annotated[str | None, typer.Option(help="List only this store. Without it, every store.")] = None,
     sort: Annotated[
         EntrySort,
-        typer.Option(help="What to order them by. Names, tags, and stores go from A. The rest start with the most."),
+        typer.Option(
+            metavar="<sort>",
+            help="What to order them by: name, created, updated, rating, size, files, tags, or store. Names, tags, "
+            "and stores go from A. The rest start with the newest, the best, or the largest.",
+        ),
     ] = "created",
     descending: Annotated[
-        bool | None, typer.Option("--descending/--ascending", help="Turn the order around.", show_default=False)
+        bool | None,
+        typer.Option(
+            "--descending/--ascending",
+            help="Which way to order them. Without either, the way the sort starts.",
+            show_default=False,
+        ),
     ] = None,
     limit: Annotated[int, typer.Option(help="How many to list at once.")] = 100,
     after: Annotated[str | None, typer.Option(help="Carry on from the page that printed this.")] = None,
@@ -730,7 +751,12 @@ def grep_entries(
     pattern: Annotated[str, typer.Argument(help="A regular expression, such as 'assist mode' or 'level-[0-9]+'.")],
     field: Annotated[
         list[Field] | None,
-        typer.Option(help="A field to look in. Repeat it for each one. Without it, every field.", show_default=False),
+        typer.Option(
+            metavar="<list[field]>",
+            help="A field to look in: name, title, description, url, tags, notes, file_descriptions, file_notes, "
+            "file_tags, or file_contents. Repeat it for each one. Without it, every field.",
+            show_default=False,
+        ),
     ] = None,
     glob: Annotated[
         str | None,
