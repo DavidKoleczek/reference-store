@@ -38,3 +38,37 @@ def test_a_name_that_follows_the_rules_is_taken(name: str) -> None:
 def test_a_name_that_breaks_a_rule_is_refused_with_the_reason(name: str, reason: str) -> None:
     with pytest.raises(ReferenceStoreError, match=re.escape(reason)):
         names.check_name(name, "an entry")
+
+
+@pytest.mark.parametrize(
+    ("path", "cleaned"),
+    [
+        ("menu.png", "menu.png"),
+        ("screenshots\\menu.png", "screenshots/menu.png"),
+        (" /screenshots/captures/ ", "screenshots/captures"),
+        (".gitignore", ".gitignore"),
+        ("docs/.notes/con-1.md", "docs/.notes/con-1.md"),
+        ("a" * 150, "a" * 150),
+    ],
+)
+def test_a_path_in_an_entry_is_taken_with_slashes_between_its_parts(path: str, cleaned: str) -> None:
+    assert names.check_path(path) == cleaned
+
+
+@pytest.mark.parametrize(
+    ("path", "reason"),
+    [
+        ("", "can't be empty"),
+        ("/", "can't be empty"),
+        ("a//b.png", "an empty part"),
+        ("./b.png", ". or .."),
+        ("a/../b.png", ". or .."),
+        ("shots/a:b.png", "it has :"),
+        ("shots./a.png", "ends in a dot or a space"),
+        ("aux/a.png", "keeps AUX"),
+        ("a" * 151, "151 characters"),
+    ],
+)
+def test_a_path_that_breaks_a_rule_is_refused_with_the_reason(path: str, reason: str) -> None:
+    with pytest.raises(ReferenceStoreError, match=re.escape(reason)):
+        names.check_path(path)

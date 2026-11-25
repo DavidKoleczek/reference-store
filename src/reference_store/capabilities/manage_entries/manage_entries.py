@@ -5,9 +5,9 @@ from pathlib import Path
 import shutil
 import uuid
 
-from reference_store.core import disk, entries, names, stores
+from reference_store.core import disk, entries, names, new_files, stores
 from reference_store.core.entries import ENTRY_FILE, EntryRecord, PreviewRecord
-from reference_store.models import Entry, NewPreview, NotGiven, ReferenceStoreError, Store
+from reference_store.models import Entry, NewFile, NewPreview, NotGiven, ReferenceStoreError, Store
 
 
 def add_entry(
@@ -19,6 +19,7 @@ def add_entry(
     notes: str,
     rating: int | None,
     preview: NewPreview | None,
+    files: list[NewFile] | None,
     created: datetime | None,
     store: str | None,
 ) -> Entry:
@@ -51,16 +52,23 @@ def add_entry(
                 f"The store {target.name} already has {entries.what_is(taken)} named {taken.name}. Pick another name, "
                 "or another store."
             )
+        placings = new_files.planned(folder, files or [])
+        new_files.describe(record, placings)
+        if preview is not None and preview.file is not None:
+            paths = [placing.path for placing in placings]
+            record.preview = PreviewRecord(file=_own_image(name, paths, preview.file), url=preview.url or None)
         if target.priority_order == 0:
             stores.make_store(target.path)
         folder.mkdir()
         try:
-            if image is not None and record.preview is not None:
-                shutil.copyfile(image, folder / record.preview.file)
-            entries.write(folder, record)
+            with new_files.placed(folder, placings):
+                if image is not None and record.preview is not None:
+                    shutil.copyfile(image, folder / record.preview.file)
+                entries.write(folder, record)
         except BaseException:
             shutil.rmtree(folder, ignore_errors=True)
             raise
+        new_files.finish_moves(placings)
     return entries.entry_of(target, folder, record)
 
 
@@ -88,12 +96,7 @@ def update_entry(
     """
     if not isinstance(rating, NotGiven):
         entries.check_rating(rating)
-    adding = entries.clean_tags(add_tags or [])
-    removing = entries.clean_tags(remove_tags or [])
-    removed = {names.key(tag) for tag in removing}
-    both = next((tag for tag in adding if names.key(tag) in removed), None)
-    if both is not None:
-        raise ReferenceStoreError(f"The tag {both} can't be both added and removed.")
+    adding, removing = entries.tag_changes(add_tags, remove_tags)
     target, folder = entries.find(name, store)
     image = None
     if isinstance(preview, NewPreview):
@@ -115,7 +118,7 @@ def update_entry(
             record.notes = notes
         if not isinstance(rating, NotGiven):
             record.rating = rating
-        record.tags = _retagged(record.tags, adding, removing)
+        record.tags = entries.retagged(record.tags, adding, removing)
         old_copy = before.preview.file if before.preview and entries.is_copied_preview(before.preview.file) else None
         if not isinstance(preview, NotGiven):
             record.preview = _changed_preview(folder, record, preview, image)
@@ -163,15 +166,16 @@ def _store_to_add_to(store: str | None) -> Store:
 
 
 def _preview_image(preview: NewPreview | None) -> Path | None:
-    """Returns the image a new entry copies in as its preview, refusing a preview that can't be one."""
+    """Returns the image a new entry copies in as its preview, or None for one of its files, refusing a preview that
+    can't be one."""
     if preview is None:
         return None
     if preview.source is not None and preview.file is not None:
         raise ReferenceStoreError("A preview is a source or a file, not both.")
     if preview.file is not None:
-        raise ReferenceStoreError(f"{preview.file} isn't one of the entry's files, so it can't be its preview.")
+        return None
     if preview.source is None:
-        raise ReferenceStoreError("A preview needs a source, an image to copy in.")
+        raise ReferenceStoreError("A preview needs an image: a source to copy in, or one of the entry's files.")
     return _source_image(preview.source)
 
 
@@ -201,7 +205,8 @@ def _changed_preview(
     if image is not None:
         return PreviewRecord(file=_copied_name(image), url=url)
     if preview.file is not None:
-        return PreviewRecord(file=_own_image(folder, record, preview.file), url=url)
+        paths = [file.path for file in entries.files_of(folder, record)]
+        return PreviewRecord(file=_own_image(folder.name, paths, preview.file), url=url)
     if record.preview is None:
         raise ReferenceStoreError(
             f"{folder.name} has no preview for that url to be about. Give the image too, as a source or a file."
@@ -209,22 +214,14 @@ def _changed_preview(
     return PreviewRecord(file=record.preview.file, url=url)
 
 
-def _own_image(folder: Path, record: EntryRecord, path: str) -> str:
-    """Returns the path of the entry's file that `path` names, as the folder has it, refusing one that isn't an image."""
-    wanted = names.key(path.strip().replace("\\", "/").strip("/"))
-    found = next((file for file in entries.files_of(folder, record) if names.key(file.path) == wanted), None)
+def _own_image(name: str, paths: list[str], path: str) -> str:
+    """Returns the one of the entry's paths that `path` names, refusing one that isn't there or isn't an image."""
+    wanted = names.key(names.slashed(path))
+    found = next((each for each in paths if names.key(each) == wanted), None)
     if found is None:
-        raise ReferenceStoreError(f"{path} isn't one of {folder.name}'s files, so it can't be its preview.")
-    if Path(found.path).suffix.lower() not in entries.PREVIEW_SUFFIXES:
+        raise ReferenceStoreError(f"{path} isn't one of {name}'s files, so it can't be its preview.")
+    if Path(found).suffix.lower() not in entries.PREVIEW_SUFFIXES:
         raise ReferenceStoreError(
-            f"{found.path} can't be a preview. A preview is an image: {', '.join(entries.PREVIEW_SUFFIXES)}."
+            f"{found} can't be a preview. A preview is an image: {', '.join(entries.PREVIEW_SUFFIXES)}."
         )
-    return found.path
-
-
-def _retagged(tags: list[str], adding: list[str], removing: list[str]) -> list[str]:
-    """Returns the tags without those removed and with those added, keeping the spelling of a tag already there."""
-    removed = {names.key(tag) for tag in removing}
-    kept = [tag for tag in tags if names.key(tag) not in removed]
-    held = {names.key(tag) for tag in kept}
-    return kept + [tag for tag in adding if names.key(tag) not in held]
+    return found

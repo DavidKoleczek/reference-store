@@ -41,6 +41,17 @@ class NewPreview(BaseModel):
     url: str | None = None  # where the image came from
 
 
+class NewFile(BaseModel):
+    """A file or a folder to copy or move into an entry, and what to say about it."""
+
+    source: Path  # a file or a folder anywhere on the machine
+    path: str | None = None  # where it goes in the entry
+    description: str = ""
+    notes: str = ""
+    tags: list[str] | None = None
+    move: bool = False
+
+
 class Preview(BaseModel):
     """The one image that stands for an entry."""
 

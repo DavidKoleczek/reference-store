@@ -54,12 +54,14 @@ $ reference-store list-stores
 
 ```
 reference-store add-entry <name> [--title <text>] [--description <text>] [--url <url>] [--tag <tag>]...
-    [--notes <text>] [--rating <1-5>] [--preview <image>] [--preview-url <url>] [--created <time>] [--store <store>]
+    [--notes <text>] [--rating <1-5>] [--preview <image>] [--preview-file <path>] [--preview-url <url>]
+    [--file <source>]... [--created <time>] [--store <store>]
 reference-store get-entry <name> [--store <store>]
 ```
 
 - `tags`: repeat `--tag` for each one.
-- `preview`: `--preview` is the image to copy in, and `--preview-url` is where it came from.
+- `preview`: `--preview` is the image to copy in, `--preview-file` one of the files added, and `--preview-url` where it came from.
+- `files`: repeat `--file` for each one. Each goes at the top of the entry under its own name. `add-files` puts one anywhere else, and says what it is.
 - `created`: a date or a time, such as `2026-01-05` or `2026-01-05T18:30:00Z`.
 
 Both print the entry: a line for each field that has something in it, then a line for each file with its size, its tags, and its description.
@@ -132,6 +134,33 @@ github.com: 5 entries
   octocat: 3 entries
   some-org: 1 entry
 example.com: 2 entries
+```
+
+## Files in an entry
+
+```
+reference-store add-files <name> <source> [--path <path>] [--description <text>] [--notes <text>] [--tag <tag>]...
+    [--move] [--store <store>]
+reference-store update-file <name> <path> [--description <text>] [--notes <text>] [--add-tag <tag>]...
+    [--remove-tag <tag>]... [--clear <field>]... [--store <store>]
+reference-store rename-file <name> <path> <new-path> [--store <store>]
+reference-store delete-file <name> <path> [--store <store>]
+```
+
+- `files`: `add-files` adds one source per call, a file or a folder, and its options are the fields of `NewFile`.
+- `--clear` empties `description` or `notes`, as in `update-entry`.
+- `add_tags` and `remove_tags`: repeat `--add-tag` and `--remove-tag` for each one.
+
+Each prints the entry as `get-entry` does.
+
+```console
+$ reference-store add-files game-1 D:\captures --path screenshots/ --tag gameplay
+...
+files: 4, 2.1 MB
+  screenshots/captures/level-1.png  280 KB  [gameplay]
+  screenshots/captures/level-2.png  310 KB  [gameplay]
+  screenshots/captures/level-3.png  295 KB  [gameplay]
+  screenshots/menu.png  1.2 MB  [ux]  The pause menu.
 ```
 
 ## App

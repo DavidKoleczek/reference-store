@@ -301,10 +301,10 @@ class NewFile(BaseModel):
     move: bool = False
 ```
 
-Copies files and folders into an entry. A file that is already there is refused.
+Copies files and folders into an entry. Everything is checked first, so when one file can't go in, such as one that is already there, none do.
 
 - `source`: a folder is copied with everything in it.
-- `path`: without it, the source goes at the top of the entry under its own name. With `.`, what is in a folder goes at the top instead.
+- `path`: without it, the source goes at the top of the entry under its own name. One that ends in `/` is a folder to put it in, under its own name. With `.`, what is in a folder goes at the top instead.
 - `tags`: on a folder, every file in it gets them.
 - `move`: moves the source into the entry instead of copying it.
 
@@ -349,13 +349,15 @@ def rename_file(name: str, path: str, new_path: str, store: str | None = None) -
 
 Renames a file or a folder, or moves it to another folder in the entry. What was said about it, and the preview, go with it.
 
+A `new_path` that ends in `/` is a folder to move it into, under its own name. A folder it leaves empty is deleted.
+
 ### `delete_file`
 
 ```python
 def delete_file(name: str, path: str, store: str | None = None) -> Entry
 ```
 
-Deletes a file, or a folder and everything in it.
+Deletes a file, or a folder and everything in it, with what was said about them. A folder it leaves empty is deleted too. When the preview was one of them, the entry has none.
 
 ## Plain files
 
@@ -421,11 +423,11 @@ A file you rename yourself loses what was said about it, and stops being the pre
 Windows is the strictest about files, so its rules apply on every system. A store made on one works on the others.
 
 - A store's or an entry's name, and each part of a file's path, can't contain `\ / : * ? " < > |` or a control character, end in a dot or a space, or be a name Windows keeps for itself, such as `CON` or `NUL`.
-- A name can't start with a dot, since what the library keeps for itself does.
+- A store's or an entry's name can't start with a dot, since what the library keeps for itself does.
 - Names and paths that differ only by case count as the same.
 - A name is at most 64 characters, and a file's path inside its entry at most 150.
 - Paths inside an entry are written with `/` on every system.
-- Most Windows programs can't open a path longer than 259 characters. A call that would make a longer one on the machine is refused, with an error that says what to shorten. Keeping a store in a folder with a short path leaves the most room.
+- Most Windows programs can't open a path longer than 259 characters, and Windows can't make a folder whose path is longer than 247. A call that would make a longer one on the machine is refused, with an error that says what to shorten. Keeping a store in a folder with a short path leaves the most room.
 
 ## Search
 

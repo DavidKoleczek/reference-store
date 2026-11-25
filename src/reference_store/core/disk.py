@@ -1,9 +1,10 @@
 """Reading, writing, and moving files and folders, so that another process never sees half of one."""
 
 from collections.abc import Callable
+import contextlib
 import errno
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import secrets
 import shutil
@@ -59,10 +60,15 @@ def write_text(path: Path, text: str) -> None:
 
 
 def copy_file(source: Path, target: Path) -> None:
-    """Copies a file to `target` the way `write_text` writes one, so a reader sees the old file or the new one."""
+    """Copies a file to `target` the way `write_text` writes one, so a reader sees the old file or the new one.
+
+    The copy keeps when the file was last modified.
+    """
     written = _new_file_beside(target)
     try:
         shutil.copyfile(source, written)
+        info = source.stat()
+        os.utime(written, ns=(info.st_atime_ns, info.st_mtime_ns))
         _retried(lambda: written.replace(target))
     except BaseException:
         written.unlink(missing_ok=True)
@@ -80,7 +86,7 @@ def move_folder(source: Path, target: Path) -> None:
         ReferenceStoreError: It was copied, but some of the source couldn't be deleted.
     """
     try:
-        _retried(lambda: source.rename(target))
+        rename(source, target)
         return
     except OSError as error:
         if error.errno != errno.EXDEV:
@@ -88,11 +94,54 @@ def move_folder(source: Path, target: Path) -> None:
     copy = _new_name_beside(target)
     try:
         shutil.copytree(_long(source), _long(copy))
-        _retried(lambda: copy.rename(target))
+        rename(copy, target)
     except BaseException:
         shutil.rmtree(_long(copy), ignore_errors=True)
         raise
     delete_folder(source)
+
+
+def rename(source: Path, target: Path) -> None:
+    """Renames a file or a folder, waiting while another process has it open for a moment.
+
+    Raises:
+        OSError: It couldn't be renamed, such as when `target` is on another drive, where the error's errno is EXDEV.
+    """
+    _retried(lambda: source.rename(target))
+
+
+def make_folders(folder: Path, path: str) -> list[Path]:
+    """Makes the folders inside `folder` that `path`, a path inside it, goes through and that aren't there yet.
+
+    Returns:
+        The folders it made, outermost first.
+    """
+    made: list[Path] = []
+    for inside in reversed(PurePosixPath(path).parents[:-1]):
+        each = folder / inside
+        if not each.is_dir():
+            each.mkdir()
+            made.append(each)
+    return made
+
+
+def delete_empty(folders: list[Path]) -> None:
+    """Deletes each folder that is empty, in the order given, and leaves the rest."""
+    for each in folders:
+        with contextlib.suppress(OSError):
+            each.rmdir()
+
+
+def delete_file(path: Path) -> None:
+    """Deletes a file, even a read-only one.
+
+    Raises:
+        OSError: It couldn't be deleted, such as when it is open in a program that keeps it from being deleted.
+    """
+    try:
+        _retried(path.unlink)
+    except PermissionError as error:
+        _made_writable_and_retried(os.unlink, str(path), error)
 
 
 def delete_folder(folder: Path) -> None:
@@ -106,7 +155,7 @@ def delete_folder(folder: Path) -> None:
         ReferenceStoreError: Some of it couldn't be deleted.
     """
     doomed = _new_name_beside(folder)
-    _retried(lambda: folder.rename(doomed))
+    rename(folder, doomed)
     try:
         shutil.rmtree(_long(doomed), onexc=_made_writable_and_retried)
     except OSError as error:
@@ -122,8 +171,9 @@ def is_temporary(name: str) -> bool:
 
 
 def _new_file_beside(path: Path) -> Path:
+    """Makes an empty file beside `path` under a temporary name, and returns it in the form `_long` gives."""
     while True:
-        candidate = path.with_name(f".{secrets.token_hex(3)}.tmp")
+        candidate = Path(_long(path.with_name(f".{secrets.token_hex(3)}.tmp")))
         try:
             candidate.touch(exist_ok=False)
         except FileExistsError:
@@ -141,10 +191,11 @@ def _new_name_beside(path: Path) -> Path:
 def _long(path: Path) -> str:
     """Returns the path in a form Windows takes at any length.
 
-    A folder under a temporary name can be longer than the 260 characters most of Windows allows, when its own name is
-    shorter than the temporary one.
+    A file or folder under a temporary name can be longer than the 260 characters most of Windows allows, when its own
+    name is shorter than the temporary one.
     """
-    full = str(path.absolute())
+    # Windows takes such a path as it is, so `..` has to be gone from it first.
+    full = str(path.resolve())
     if sys.platform != "win32" or full.startswith(LONG_PREFIX):
         return full
     if full.startswith("\\\\"):

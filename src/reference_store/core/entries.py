@@ -215,22 +215,52 @@ def child(folder: Path, name: str) -> Path | None:
     return None if match is None else folder / match
 
 
+def at(folder: Path, path: str) -> Path | None:
+    """Returns what is at a path in the entry, spelled as it is on disk, whatever the case of the path given."""
+    found: Path | None = folder
+    for part in path.split("/"):
+        found = child(found, part) if found is not None else None
+    return found
+
+
+def spelled(folder: Path, path: str) -> tuple[str, Path | None]:
+    """Returns a path in the entry with each folder on its way that is there already spelled as it is on disk, and what
+    is at the path now, whatever its case.
+
+    Raises:
+        ReferenceStoreError: A file is where the path needs a folder.
+    """
+    *folders, last = path.split("/")
+    current = folder
+    for index, part in enumerate(folders):
+        found = child(current, part)
+        if found is None:
+            return "/".join([*current.relative_to(folder).parts, *folders[index:], last]), None
+        if not found.is_dir():
+            raise ReferenceStoreError(
+                f"{folder.name} has a file at {found.relative_to(folder).as_posix()}, so {path} can't go in it."
+            )
+        current = found
+    return "/".join([*current.relative_to(folder).parts, last]), child(current, last)
+
+
 def files_of(folder: Path, record: EntryRecord) -> list[EntryFile]:
     """Returns every file in the entry's folder but the library's own, in the order of their paths."""
     said = {names.key(path): about for path, about in record.files.items()}
     files: list[EntryFile] = []
-    for root, _, file_names in folder.walk():
-        if root == folder:
-            file_names = [each for each in file_names if not _is_the_librarys(each)]
+    for root, folder_names, file_names in folder.walk():
+        folder_names[:] = [each for each in folder_names if not disk.is_temporary(each)]
         for file_name in file_names:
             full_path = root / file_name
+            path = full_path.relative_to(folder).as_posix()
+            if is_the_librarys(path):
+                continue
             try:
                 info = full_path.stat()
             except OSError:
                 continue
             if not stat.S_ISREG(info.st_mode):
                 continue
-            path = full_path.relative_to(folder).as_posix()
             about = said.get(names.key(path), FileRecord())
             files.append(
                 EntryFile(
@@ -243,7 +273,50 @@ def files_of(folder: Path, record: EntryRecord) -> list[EntryFile]:
                     tags=about.tags,
                 )
             )
-    return sorted(files, key=lambda file: [names.key(part) for part in file.path.split("/")])
+    return sorted(files, key=lambda file: path_order(file.path))
+
+
+def path_order(path: str) -> list[str]:
+    """Returns what paths in an entry are sorted by, folder by folder, so a folder's files stay together."""
+    return [names.key(part) for part in path.split("/")]
+
+
+def said_about(record: EntryRecord, path: str) -> FileRecord:
+    """Returns what was said about a file, whatever the case `.entry.json` has its path in."""
+    return next(
+        (about for each, about in record.files.items() if names.key(each) == names.key(path)), FileRecord()
+    ).model_copy(deep=True)
+
+
+def say_about(record: EntryRecord, path: str, about: FileRecord) -> None:
+    """Sets what is said about the file at `path`, spelled as it is on disk, leaving it out when nothing is."""
+    kept = {each: said for each, said in record.files.items() if names.key(each) != names.key(path)}
+    if about != FileRecord():
+        kept[path] = about
+    record.files = dict(sorted(kept.items(), key=lambda item: path_order(item[0])))
+
+
+def tag_changes(add_tags: list[str] | None, remove_tags: list[str] | None) -> tuple[list[str], list[str]]:
+    """Returns the tags to add and to remove, as `clean_tags` leaves them.
+
+    Raises:
+        ReferenceStoreError: A tag is empty, or both added and removed.
+    """
+    adding = clean_tags(add_tags or [])
+    removing = clean_tags(remove_tags or [])
+    removed = {names.key(tag) for tag in removing}
+    both = next((tag for tag in adding if names.key(tag) in removed), None)
+    if both is not None:
+        raise ReferenceStoreError(f"The tag {both} can't be both added and removed.")
+    return adding, removing
+
+
+def retagged(tags: list[str], adding: list[str], removing: list[str]) -> list[str]:
+    """Returns the tags without those removed and with those added, keeping the spelling of a tag already there."""
+    removed = {names.key(tag) for tag in removing}
+    kept = [tag for tag in tags if names.key(tag) not in removed]
+    held = {names.key(tag) for tag in kept}
+    return kept + [tag for tag in adding if names.key(tag) not in held]
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -288,6 +361,24 @@ def is_copied_preview(path: str) -> bool:
     return stem == PREVIEW_STEM and f".{suffix}" in PREVIEW_SUFFIXES
 
 
-def _is_the_librarys(name: str) -> bool:
-    """Returns whether a file at the top of an entry is one the library keeps there, rather than one of its files."""
-    return names.key(name) == ENTRY_FILE or disk.is_temporary(name) or is_copied_preview(name)
+def check_file_path(path: str) -> str:
+    """Returns a path for a file or folder in an entry as `names.check_path` does, refusing one the library keeps.
+
+    Raises:
+        ReferenceStoreError: The path breaks a rule, or the library keeps it for itself.
+    """
+    cleaned = names.check_path(path)
+    if is_the_librarys(cleaned):
+        raise ReferenceStoreError(
+            f"{cleaned} can't be a file in an entry, since the library keeps that name for itself."
+        )
+    return cleaned
+
+
+def is_the_librarys(path: str) -> bool:
+    """Returns whether a path in an entry is one the library keeps for itself, rather than one of the entry's files:
+    `.entry.json` or a copied-in preview at the top, or a file it is writing anywhere."""
+    parts = path.split("/")
+    if any(disk.is_temporary(part) for part in parts):
+        return True
+    return len(parts) == 1 and (names.key(path) == ENTRY_FILE or is_copied_preview(path))

@@ -17,6 +17,7 @@ from reference_store.models import (
     Entry,
     EntrySort,
     EntrySummary,
+    NewFile,
     NewPreview,
     ReferenceStoreError,
     SiteCount,
@@ -41,6 +42,13 @@ class Clearable(StrEnum):
     NOTES = "notes"
     RATING = "rating"
     PREVIEW = "preview"
+
+
+class FileClearable(StrEnum):
+    """The fields `update-file --clear` empties."""
+
+    DESCRIPTION = "description"
+    NOTES = "notes"
 
 
 app = typer.Typer(
@@ -244,7 +252,14 @@ def add_entry(
     notes: Annotated[str, typer.Option(help="Anything else, such as why it was saved.")] = "",
     rating: Annotated[int | None, typer.Option(help="From 1 to 5, where 5 is the best.")] = None,
     preview: Annotated[Path | None, typer.Option(help="An image to copy in as the entry's preview.")] = None,
+    preview_file: Annotated[
+        str | None, typer.Option(help="One of the files added to make its preview, such as screenshots/menu.png.")
+    ] = None,
     preview_url: Annotated[str | None, typer.Option(help="Where the preview image came from.")] = None,
+    file: Annotated[
+        list[Path] | None,
+        typer.Option(help="A file or folder to copy in at the top of the entry. Repeat it for each one."),
+    ] = None,
     created: Annotated[
         str | None, typer.Option(help="When it was first saved, such as 2026-01-05 or 2026-01-05T18:30:00Z.")
     ] = None,
@@ -255,12 +270,14 @@ def add_entry(
 ) -> None:
     """Add an entry: one reference, such as a repo, a website, or a game with its screenshots.
 
-    It only saves what it is given, and never fetches anything.
+    It only saves what it is given, and never fetches anything. add-files puts files in other folders of the entry, and says what they are.
     """
-    new_preview = NewPreview(source=preview, url=preview_url) if preview or preview_url else None
+    previewed = preview is not None or preview_file is not None or preview_url is not None
+    new_preview = NewPreview(source=preview, file=preview_file, url=preview_url) if previewed else None
+    files = [NewFile(source=source) for source in file or []]
     with _reported():
         entry = lib.add_entry(
-            name, title, description, url, tag, notes, rating, new_preview, _moment(created, "--created"), store
+            name, title, description, url, tag, notes, rating, new_preview, files, _moment(created, "--created"), store
         )
     typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
 
@@ -489,6 +506,114 @@ def list_sites(
         typer.echo(f"{site.site}: {_counted(site.entries, 'entry', 'entries')}")
         for group in site.groups:
             typer.echo(f"  {group.group}: {_counted(group.entries, 'entry', 'entries')}")
+
+
+@app.command()
+def add_files(
+    name: Annotated[str, typer.Argument(help="The entry's name.")],
+    source: Annotated[Path, typer.Argument(help="A file, or a folder to add with everything in it.")],
+    path: Annotated[
+        str | None,
+        typer.Option(
+            help="Where it goes in the entry, such as screenshots/menu.png. Ending in / puts it in that folder, and . "
+            "puts what is in a folder at the top. Without it, the top, under its own name."
+        ),
+    ] = None,
+    description: Annotated[str, typer.Option(help="What the file is. Not for a folder.")] = "",
+    notes: Annotated[str, typer.Option(help="Anything else, such as what it is useful for. Not for a folder.")] = "",
+    tag: Annotated[
+        list[str] | None, typer.Option(help="A tag, which on a folder goes on every file. Repeat it for each one.")
+    ] = None,
+    move: Annotated[bool, typer.Option("--move", help="Move it in instead of copying it.")] = False,
+    store: Annotated[
+        str | None,
+        typer.Option(help="The store it is in. Without it, the store with the highest priority that has it."),
+    ] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """Copy a file or a folder into an entry, or move it in with --move.
+
+    A file that is already there is refused, and then nothing is added.
+    """
+    new = NewFile(source=source, path=path, description=description, notes=notes, tags=tag, move=move)
+    with _reported():
+        entry = lib.add_files(name, [new], store)
+    typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
+
+
+@app.command()
+def update_file(
+    name: Annotated[str, typer.Argument(help="The entry's name.")],
+    path: Annotated[str, typer.Argument(help="The file in the entry, such as screenshots/menu.png, or a folder.")],
+    description: Annotated[str | None, typer.Option(help="What the file is.")] = None,
+    notes: Annotated[str | None, typer.Option(help="Anything else, such as what it is useful for.")] = None,
+    add_tag: Annotated[list[str] | None, typer.Option(help="A tag to add. Repeat it for each one.")] = None,
+    remove_tag: Annotated[list[str] | None, typer.Option(help="A tag to remove. Repeat it for each one.")] = None,
+    clear: Annotated[
+        list[FileClearable] | None,
+        typer.Option(help="A field to clear. Repeat it for each one.", show_default=False),
+    ] = None,
+    store: Annotated[
+        str | None,
+        typer.Option(help="The store it is in. Without it, the store with the highest priority that has it."),
+    ] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """Change what is said about a file. Whatever is left out stays as it is.
+
+    A folder only takes tags, and changes them on every file in it.
+    """
+    cleared = set(clear or [])
+    for field, value in (("description", description), ("notes", notes)):
+        if field in cleared and value is not None:
+            raise typer.BadParameter(f"--{field} and --clear {field} can't both be given.", param_hint="--clear")
+    with _reported():
+        entry = lib.update_file(
+            name,
+            path,
+            description="" if "description" in cleared else NOT_GIVEN if description is None else description,
+            notes="" if "notes" in cleared else NOT_GIVEN if notes is None else notes,
+            add_tags=add_tag,
+            remove_tags=remove_tag,
+            store=store,
+        )
+    typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
+
+
+@app.command()
+def rename_file(
+    name: Annotated[str, typer.Argument(help="The entry's name.")],
+    path: Annotated[str, typer.Argument(help="The file or folder in the entry.")],
+    new_path: Annotated[str, typer.Argument(help="Its new path in the entry. Ending in /, a folder to move it into.")],
+    store: Annotated[
+        str | None,
+        typer.Option(help="The store it is in. Without it, the store with the highest priority that has it."),
+    ] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """Rename a file or a folder in an entry, or move it to another folder there.
+
+    What was said about it, and the preview, go with it.
+    """
+    with _reported():
+        entry = lib.rename_file(name, path, new_path, store)
+    typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
+
+
+@app.command()
+def delete_file(
+    name: Annotated[str, typer.Argument(help="The entry's name.")],
+    path: Annotated[str, typer.Argument(help="The file or folder in the entry.")],
+    store: Annotated[
+        str | None,
+        typer.Option(help="The store it is in. Without it, the store with the highest priority that has it."),
+    ] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """Delete a file from an entry, or a folder and everything in it."""
+    with _reported():
+        entry = lib.delete_file(name, path, store)
+    typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
 
 
 @app.command()

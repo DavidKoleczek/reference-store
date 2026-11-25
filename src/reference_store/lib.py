@@ -5,6 +5,7 @@ from datetime import datetime
 from reference_store.app.server import AppServer
 from reference_store.capabilities.listing import listing
 from reference_store.capabilities.manage_entries import manage_entries, relocate
+from reference_store.capabilities.manage_files import manage_files
 from reference_store.capabilities.manage_stores import manage_stores
 from reference_store.core import stores
 from reference_store.models import (
@@ -12,6 +13,7 @@ from reference_store.models import (
     Entry,
     EntryListing,
     EntrySort,
+    NewFile,
     NewPreview,
     NotGiven,
     SiteCount,
@@ -86,6 +88,7 @@ def add_entry(
     notes: str = "",
     rating: int | None = None,
     preview: NewPreview | None = None,
+    files: list[NewFile] | None = None,
     created: datetime | None = None,
     store: str | None = None,
 ) -> Entry:
@@ -94,16 +97,16 @@ def add_entry(
     It only saves what it is given, and never fetches anything. `name` is the name of the entry's folder, and `title`
     is for a title the name can't be, such as one with a colon. Tags that differ only by case are the same tag.
 
-    A preview's `source` is copied into the entry. `created` keeps the date of a reference that was saved somewhere
-    else before, and is now when left out.
+    A preview's `source` is copied into the entry, and its `file` is one of the `files`. `files` go in as `add_files`
+    puts them. `created` keeps the date of a reference that was saved somewhere else before, and is now when left out.
 
     Without `store`, it goes in the project's store when there is one, and in the default store otherwise.
 
     Raises:
         ReferenceStoreError: The name breaks a rule or is taken in the store, the rating is outside 1 to 5, the
-            preview can't be one, or there is no store to add it to.
+            preview can't be one, a file can't be added, or there is no store to add it to.
     """
-    return manage_entries.add_entry(name, title, description, url, tags, notes, rating, preview, created, store)
+    return manage_entries.add_entry(name, title, description, url, tags, notes, rating, preview, files, created, store)
 
 
 def get_entry(name: str, store: str | None = None) -> Entry:
@@ -231,6 +234,67 @@ def delete_entry(name: str, store: str | None = None) -> None:
             being deleted, in which case nothing is.
     """
     manage_entries.delete_entry(name, store)
+
+
+def add_files(name: str, files: list[NewFile], store: str | None = None) -> Entry:
+    """Copies files and folders into an entry, or moves them in with `move`. A folder goes in with everything in it.
+
+    A `path` says where in the entry a source goes. Without it, the source goes at the top under its own name. One
+    that ends in `/` is a folder to put it in under its own name, and with `.`, what is in a folder goes at the top.
+    Tags on a folder go on every file in it, and a description or notes are only for a single file.
+
+    Everything is checked first, so when one file can't go in, none do.
+
+    Raises:
+        ReferenceStoreError: There is no entry with that name, a source isn't there, something is at a path a file
+            would take, a path breaks a rule, or a file couldn't be copied, such as when it is open in a program.
+    """
+    return manage_files.add_files(name, files, store)
+
+
+def update_file(
+    name: str,
+    path: str,
+    description: str | NotGiven = NOT_GIVEN,
+    notes: str | NotGiven = NOT_GIVEN,
+    add_tags: list[str] | None = None,
+    remove_tags: list[str] | None = None,
+    store: str | None = None,
+) -> Entry:
+    """Changes what is said about one of an entry's files, and keeps what is left out.
+
+    `path` can also be a folder, which only takes tags, and changes them on every file in it.
+
+    Raises:
+        ReferenceStoreError: There is no entry with that name or nothing at `path`, a tag is both added and removed,
+            or a folder is given a description or notes.
+    """
+    return manage_files.update_file(name, path, description, notes, add_tags, remove_tags, store)
+
+
+def rename_file(name: str, path: str, new_path: str, store: str | None = None) -> Entry:
+    """Renames a file or a folder in an entry, or moves it to another folder there.
+
+    What was said about it, and the preview, go with it. A `new_path` that ends in `/` is a folder to move it into,
+    under its own name. A folder it leaves empty is deleted.
+
+    Raises:
+        ReferenceStoreError: There is no entry with that name or nothing at `path`, something is at `new_path`, it
+            breaks a rule, or a file is open in a program that keeps it from moving.
+    """
+    return manage_files.rename_file(name, path, new_path, store)
+
+
+def delete_file(name: str, path: str, store: str | None = None) -> Entry:
+    """Deletes one of an entry's files, or a folder and everything in it.
+
+    What was said about it goes too, and so does the preview when it was. A folder it leaves empty is deleted.
+
+    Raises:
+        ReferenceStoreError: There is no entry with that name or nothing at `path`, or a file is open in a program
+            that keeps it from being deleted, in which case nothing is.
+    """
+    return manage_files.delete_file(name, path, store)
 
 
 def app_server() -> AppServer:
