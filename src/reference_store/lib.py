@@ -19,6 +19,7 @@ from reference_store.models import (
     EntryListing,
     EntrySort,
     FileListing,
+    FileSort,
     GrepField,
     GrepListing,
     NewFile,
@@ -160,7 +161,9 @@ def list_entries(
     file_tags: list[str] | None = None,
     tag_match: TagMatch = "all",
     min_rating: int | None = None,
-    site: str | None = None,
+    sites: list[str] | None = None,
+    without_tags: bool = False,
+    without_site: bool = False,
     store: str | None = None,
     sort: EntrySort = "created",
     descending: bool | None = None,
@@ -170,8 +173,9 @@ def list_entries(
     """Returns a page of entries, from every store or the one named.
 
     It keeps the entries that have every tag in `tags`, and with `file_tags`, a file that has every one of those.
-    With `tag_match="any"`, one of them is enough. `min_rating` keeps the entries rated that or better, and `site`
-    the entries that link to a site, such as `github.com`, or to a group on it, such as `github.com/octocat`.
+    With `tag_match="any"`, one of them is enough. `min_rating` keeps the entries rated that or better, and `sites`
+    the entries that link to one of them, each a site, such as `github.com`, or a group on it, such as
+    `github.com/octocat`. `without_tags` keeps the entries with no tags, and `without_site` those that link to no site.
 
     `sort` orders them by name, by when they were added or last changed, by rating, by the size of their files, by
     how many they have, by their tags, or by their store. Names, tags, and stores go from A, and the title counts as
@@ -184,7 +188,20 @@ def list_entries(
         ReferenceStoreError: A filter can't be one, `limit` is less than 1, `after` came from another sort, or the
             store named can't be used.
     """
-    return listing.list_entries(tags, file_tags, tag_match, min_rating, site, store, sort, descending, limit, after)
+    return listing.list_entries(
+        tags,
+        file_tags,
+        tag_match,
+        min_rating,
+        sites,
+        without_tags,
+        without_site,
+        store,
+        sort,
+        descending,
+        limit,
+        after,
+    )
 
 
 def list_tags(store: str | None = None) -> list[TagCount]:
@@ -341,7 +358,9 @@ def grep_entries(
     file_tags: list[str] | None = None,
     tag_match: TagMatch = "all",
     min_rating: int | None = None,
-    site: str | None = None,
+    sites: list[str] | None = None,
+    without_tags: bool = False,
+    without_site: bool = False,
     store: str | None = None,
     matches_per_entry: int = 5,
     limit: int = 100,
@@ -371,7 +390,9 @@ def grep_entries(
         file_tags,
         tag_match,
         min_rating,
-        site,
+        sites,
+        without_tags,
+        without_site,
         store,
         matches_per_entry,
         limit,
@@ -385,23 +406,48 @@ def glob_files(
     tags: list[str] | None = None,
     tag_match: TagMatch = "all",
     min_rating: int | None = None,
-    site: str | None = None,
+    sites: list[str] | None = None,
+    without_tags: bool = False,
+    without_site: bool = False,
     store: str | None = None,
+    sort: FileSort = "path",
+    descending: bool | None = None,
     limit: int = 100,
     after: str | None = None,
 ) -> FileListing:
-    """Returns a page of the files whose path matches a glob pattern, in the order of their paths.
+    """Returns a page of the files whose path matches a glob pattern, in the order of their paths unless sorted.
 
     The pattern is matched against a file's path starting with its entry's name, whatever the case, so
     `game-1/**/*.png` is every PNG in one entry, and `**/*.md` every Markdown file in all of them.
 
     `file_tags` keeps the files that have every one, or one of them with `tag_match="any"`. The other filters are about
-    the files' entries, as in `list_entries`. Pass the page's `after` to get the next one.
+    the files' entries, as in `list_entries`.
+
+    `sort` orders them by path, which goes entry by entry, by the file's name, by when it last changed, by its size,
+    or by its type, which is the end of its name, such as `.png`. Paths, names, and types go from A, and the rest
+    start with the newest or the largest. `descending` turns either around. Ties go in the order of the paths.
+
+    Pass the page's `after` to get the next one.
 
     Raises:
-        ReferenceStoreError: The pattern is empty, a filter can't be one, or the store named can't be used.
+        ReferenceStoreError: The pattern is empty, a filter can't be one, `limit` is less than 1, `after` came from
+            another sort, or the store named can't be used.
     """
-    return search.glob_files(pattern, file_tags, tags, tag_match, min_rating, site, store, limit, after)
+    return search.glob_files(
+        pattern,
+        file_tags,
+        tags,
+        tag_match,
+        min_rating,
+        sites,
+        without_tags,
+        without_site,
+        store,
+        sort,
+        descending,
+        limit,
+        after,
+    )
 
 
 def rebuild_index(store: str | None = None) -> None:

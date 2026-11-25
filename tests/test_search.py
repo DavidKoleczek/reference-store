@@ -106,6 +106,25 @@ def test_entries_are_found_by_what_they_say_and_files_by_their_paths(workspace: 
         "beta/game-1/notes.md",
     ]
     assert paths("GAME-1/*.md") == ["beta/game-1/notes.md"]
+    assert paths("**", "--descending") == paths("**")[::-1]
+    assert paths("**", "--sort", "size") == [
+        "alpha/game-1/page.html",
+        "alpha/game-1/notes/review.md",
+        "alpha/game-1/screenshots/menu.png",
+        "alpha/game-1/legacy.txt",
+        "beta/game-1/notes.md",
+    ]
+    # Ties go in the order of the paths.
+    assert paths("**", "--sort", "type") == [
+        "alpha/game-1/page.html",
+        "alpha/game-1/notes/review.md",
+        "beta/game-1/notes.md",
+        "alpha/game-1/screenshots/menu.png",
+        "alpha/game-1/legacy.txt",
+    ]
+    assert [path.rsplit("/", 1)[-1] for path in paths("**", "--sort", "name", "--descending")] == [
+        "review.md", "page.html", "notes.md", "menu.png", "legacy.txt",
+    ]  # fmt: skip
     assert paths("**", "--file-tag", "ux") == ["alpha/game-1/screenshots/menu.png"]
     assert paths("**/*.md", "--tag", "puzzle") == ["alpha/game-1/notes/review.md"]
 
@@ -115,6 +134,7 @@ def test_entries_are_found_by_what_they_say_and_files_by_their_paths(workspace: 
         ["grep-entries", "assist", "--matches-per-entry", "-1"],
         ["grep-entries", "assist", "--after", after],
         ["glob-files", " "],
+        ["glob-files", "**", "--sort", "size", "--after", after],
     ]:
         refused(*refusal)
     assert runner.invoke(app, ["grep-entries", "assist", "--field", "nope"]).exit_code == 2

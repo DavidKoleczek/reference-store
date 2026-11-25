@@ -18,6 +18,7 @@ from reference_store.models import (
     EntrySort,
     EntrySummary,
     FileMatch,
+    FileSort,
     GrepMatch,
     GrepResult,
     NewFile,
@@ -198,11 +199,15 @@ def _describe_summary(entry: EntrySummary, sort: EntrySort) -> str:
     return "  ".join([f"{entry.name}{title}", *facts])
 
 
-def _describe_file(file: FileMatch) -> str:
-    """The file as one line: its path starting with its entry's name, its store, its size, its tags, and what it is."""
+def _describe_file(file: FileMatch, sort: FileSort) -> str:
+    """The file as one line: its path starting with its entry's name, its store, its size, its tags, and what it is.
+
+    Sorted by when the files last changed, the line has that day too.
+    """
+    changed = f"  {file.modified.astimezone():%Y-%m-%d}" if sort == "modified" else ""
     tags = f"  [{', '.join(file.tags)}]" if file.tags else ""
     description = f"  {file.description}" if file.description else ""
-    return f"{file.entry}/{file.path}  {file.store}  {_size(file.size)}{tags}{description}"
+    return f"{file.entry}/{file.path}  {file.store}{changed}  {_size(file.size)}{tags}{description}"
 
 
 def _describe_result(result: GrepResult) -> list[str]:
@@ -548,11 +553,14 @@ def list_entries(
     ] = False,
     min_rating: Annotated[int | None, typer.Option(help="Keep entries rated this or better, from 1 to 5.")] = None,
     site: Annotated[
-        str | None,
+        list[str] | None,
         typer.Option(
-            help="Keep entries that link to a site, such as github.com, or to a group on it, such as github.com/octocat."
+            help="Keep entries that link to a site, such as github.com, or to a group on it, such as "
+            "github.com/octocat. Repeat it for each one, and one of them is enough."
         ),
     ] = None,
+    without_tags: Annotated[bool, typer.Option("--without-tags", help="Keep entries with no tags.")] = False,
+    without_site: Annotated[bool, typer.Option("--without-site", help="Keep entries that link to no site.")] = False,
     store: Annotated[str | None, typer.Option(help="List only this store. Without it, every store.")] = None,
     sort: Annotated[
         EntrySort,
@@ -580,13 +588,25 @@ def list_entries(
     """
     with _reported():
         listing = lib.list_entries(
-            tag, file_tag, "any" if any_ else "all", min_rating, site, store, sort, descending, limit, after
+            tag,
+            file_tag,
+            "any" if any_ else "all",
+            min_rating,
+            site,
+            without_tags,
+            without_site,
+            store,
+            sort,
+            descending,
+            limit,
+            after,
         )
     if json:
         typer.echo(listing.model_dump_json(indent=2))
         return
     if not listing.total:
-        typer.echo("No entries match." if tag or file_tag or min_rating or site else "There are no entries.")
+        filtered = tag or file_tag or min_rating or site or without_tags or without_site
+        typer.echo("No entries match." if filtered else "There are no entries.")
         return
     for entry in listing.entries:
         typer.echo(_describe_summary(entry, sort))
@@ -777,9 +797,13 @@ def grep_entries(
     ] = False,
     min_rating: Annotated[int | None, typer.Option(help="Keep entries rated this or better, from 1 to 5.")] = None,
     site: Annotated[
-        str | None,
-        typer.Option(help="Keep entries that link to a site, such as github.com, or to a group on it."),
+        list[str] | None,
+        typer.Option(
+            help="Keep entries that link to a site, such as github.com, or to a group on it. Repeat it for each one."
+        ),
     ] = None,
+    without_tags: Annotated[bool, typer.Option("--without-tags", help="Keep entries with no tags.")] = False,
+    without_site: Annotated[bool, typer.Option("--without-site", help="Keep entries that link to no site.")] = False,
     store: Annotated[str | None, typer.Option(help="Look only in this store. Without it, every store.")] = None,
     matches_per_entry: Annotated[int, typer.Option(help="How many matches to show for each entry.")] = 5,
     limit: Annotated[int, typer.Option(help="How many entries to list at once.")] = 100,
@@ -801,6 +825,8 @@ def grep_entries(
             "any" if any_ else "all",
             min_rating,
             site,
+            without_tags,
+            without_site,
             store,
             matches_per_entry,
             limit,
@@ -839,21 +865,56 @@ def glob_files(
         int | None, typer.Option(help="Keep files whose entry is rated this or better, from 1 to 5.")
     ] = None,
     site: Annotated[
-        str | None,
-        typer.Option(help="Keep files whose entry links to a site, such as github.com, or to a group on it."),
+        list[str] | None,
+        typer.Option(
+            help="Keep files whose entry links to a site, such as github.com, or to a group on it. Repeat it for "
+            "each one."
+        ),
     ] = None,
+    without_tags: Annotated[bool, typer.Option("--without-tags", help="Keep files whose entry has no tags.")] = False,
+    without_site: Annotated[
+        bool, typer.Option("--without-site", help="Keep files whose entry links to no site.")
+    ] = False,
     store: Annotated[str | None, typer.Option(help="Look only in this store. Without it, every store.")] = None,
+    sort: Annotated[
+        FileSort,
+        typer.Option(
+            metavar="<sort>",
+            help="What to order them by: path, name, modified, size, or type. Paths, names, and types go from A. "
+            "The rest start with the newest or the largest.",
+        ),
+    ] = "path",
+    descending: Annotated[
+        bool | None,
+        typer.Option(
+            "--descending/--ascending",
+            help="Which way to order them. Without either, the way the sort starts.",
+            show_default=False,
+        ),
+    ] = None,
     limit: Annotated[int, typer.Option(help="How many to list at once.")] = 100,
     after: Annotated[str | None, typer.Option(help="Carry on from the page that printed this.")] = None,
     json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
 ) -> None:
-    """List the files whose path matches a glob pattern, in the order of their paths.
+    """List the files whose path matches a glob pattern, in the order of their paths unless sorted otherwise.
 
     * matches within a name, ** any number of folders, and the case doesn't matter. Quote the pattern, so the shell leaves it alone.
     """
     with _reported():
         listing = lib.glob_files(
-            pattern, file_tag, tag, "any" if any_ else "all", min_rating, site, store, limit, after
+            pattern,
+            file_tag,
+            tag,
+            "any" if any_ else "all",
+            min_rating,
+            site,
+            without_tags,
+            without_site,
+            store,
+            sort,
+            descending,
+            limit,
+            after,
         )
     if json:
         typer.echo(listing.model_dump_json(indent=2))
@@ -862,7 +923,7 @@ def glob_files(
         typer.echo("No file matches.")
         return
     for file in listing.files:
-        typer.echo(_describe_file(file))
+        typer.echo(_describe_file(file, sort))
     shown = f"{len(listing.files)} of {_counted(listing.total, 'file', 'files')}."
     typer.echo(f"{shown} For the next page: --after {listing.after}" if listing.after else shown)
 

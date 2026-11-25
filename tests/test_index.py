@@ -43,7 +43,7 @@ def in_order(found: list[FileMatch]) -> list[FileMatch]:
 def index_is_what_the_folders_hold() -> None:
     """The catalog read from the index gives what the one read from the folders does."""
     scanned = Scanned()
-    narrowed = filters.filters(["game"], ["ux"], "any", 2, None)
+    narrowed = filters.filters(["game"], ["ux"], "any", 2, None, False, False)
     with contextlib.closing(index.connect()) as connection:
         indexed = Indexed(connection)
         for keep in (filters.EVERYTHING, narrowed):

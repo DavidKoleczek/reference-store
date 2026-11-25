@@ -2,17 +2,20 @@
 
 import codecs
 from collections.abc import Iterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 from typing import get_args
 
 from reference_store.capabilities.search import globs
 from reference_store.core import entries, filters, names, pages
 from reference_store.core.catalog import catalog
+from reference_store.core.pages import Key
 from reference_store.models import (
     Entry,
     EntryFile,
     FileListing,
+    FileMatch,
+    FileSort,
     GrepField,
     GrepListing,
     GrepMatch,
@@ -22,6 +25,9 @@ from reference_store.models import (
 )
 
 FIELDS: tuple[GrepField, ...] = get_args(GrepField)
+FILE_SORTS: tuple[FileSort, ...] = get_args(FileSort)
+# The file sorts that start with the newest or the largest. The rest go from A.
+LARGEST_FIRST = ("modified", "size")
 # Enough of a file to tell text from an image or a video before reading the rest of it.
 SNIFF_BYTES = 8192
 # A longer line, such as one of a saved page's HTML, is cut to the part around its match.
@@ -37,7 +43,9 @@ def grep_entries(
     file_tags: list[str] | None,
     tag_match: TagMatch,
     min_rating: int | None,
-    site: str | None,
+    sites: list[str] | None,
+    without_tags: bool,
+    without_site: bool,
     store: str | None,
     matches_per_entry: int,
     limit: int,
@@ -52,7 +60,7 @@ def grep_entries(
     if matches_per_entry < 0:
         raise ReferenceStoreError(f"matches_per_entry can't be less than 0, so it can't be {matches_per_entry}.")
     paths = None if glob is None else globs.compiled(glob)
-    keep = filters.filters(tags, file_tags, tag_match, min_rating, site)
+    keep = filters.filters(tags, file_tags, tag_match, min_rating, sites, without_tags, without_site)
     results: list[GrepResult] = []
     with catalog.reading() as held:
         for entry in held.entries(keep, store):
@@ -90,26 +98,47 @@ def glob_files(
     tags: list[str] | None,
     tag_match: TagMatch,
     min_rating: int | None,
-    site: str | None,
+    sites: list[str] | None,
+    without_tags: bool,
+    without_site: bool,
     store: str | None,
+    sort: FileSort,
+    descending: bool | None,
     limit: int,
     after: str | None,
 ) -> FileListing:
     """Returns a page of the files whose path, starting with their entry's name, matches `pattern`."""
+    if sort not in FILE_SORTS:
+        raise ReferenceStoreError(f"There is no sort {sort}. It is one of: {', '.join(FILE_SORTS)}.")
+    downward = sort in LARGEST_FIRST if descending is None else descending
     paths = globs.compiled(pattern)
-    keep = filters.filters(tags, file_tags, tag_match, min_rating, site)
+    keep = filters.filters(tags, file_tags, tag_match, min_rating, sites, without_tags, without_site)
     with catalog.reading() as held:
         found = held.files(keep, store, lambda entry, path: globs.matches(paths, entry, path))
     shown, total, next_after = pages.page(
         found,
-        # Entries that share a name in two stores keep their files apart.
-        key=lambda file: [names.key(file.entry), names.key(file.store), entries.path_order(file.path)],
-        descending=[False, False, False],
+        key=lambda file: _file_key(file, sort),
+        # Ties go in the order of the paths, which is the whole order for `path`, so that one turns around with it.
+        descending=[downward, *([downward if sort == "path" else False] * 3)],
         limit=limit,
         after=after,
-        made_for="files in the order of their paths",
+        made_for=f"files sorted by {sort}, {'descending' if downward else 'ascending'}",
     )
     return FileListing(files=shown, total=total, after=next_after)
+
+
+def _file_key(file: FileMatch, sort: FileSort) -> Key:
+    """Returns what a file is sorted by, then its place in the order of the paths, which no other file has."""
+    name = PurePosixPath(file.path)
+    value: str | int | float = {
+        "path": 0,
+        "name": names.key(name.name),
+        "modified": file.modified.timestamp(),
+        "size": file.size,
+        "type": names.key(name.suffix),
+    }[sort]
+    # Entries that share a name in two stores keep their files apart.
+    return [value, names.key(file.entry), names.key(file.store), entries.path_order(file.path)]
 
 
 def _fields(fields: list[GrepField] | None) -> list[GrepField]:

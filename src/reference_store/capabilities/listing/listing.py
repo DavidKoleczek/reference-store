@@ -2,7 +2,8 @@
 
 from typing import get_args
 
-from reference_store.core import filters, names, pages, sites
+from reference_store.core import filters, names, pages
+from reference_store.core import sites as site_rules
 from reference_store.core.catalog import catalog
 from reference_store.core.pages import Key
 from reference_store.models import (
@@ -26,7 +27,9 @@ def list_entries(
     file_tags: list[str] | None,
     tag_match: TagMatch,
     min_rating: int | None,
-    site: str | None,
+    sites: list[str] | None,
+    without_tags: bool,
+    without_site: bool,
     store: str | None,
     sort: EntrySort,
     descending: bool | None,
@@ -36,7 +39,7 @@ def list_entries(
     """Returns a page of the entries that pass the filters, in the order asked for."""
     if sort not in SORTS:
         raise ReferenceStoreError(f"There is no sort {sort}. It is one of: {', '.join(SORTS)}.")
-    keep = filters.filters(tags, file_tags, tag_match, min_rating, site)
+    keep = filters.filters(tags, file_tags, tag_match, min_rating, sites, without_tags, without_site)
     downward = sort in LARGEST_FIRST if descending is None else descending
     with catalog.reading() as held:
         found = held.summaries(keep, store)
@@ -72,7 +75,7 @@ def list_sites(store: str | None) -> list[SiteCount]:
 
     Groups that differ only by case are one, spelled as it is first found.
     """
-    known = sites.in_use()
+    known = site_rules.in_use()
     counts: dict[str, SiteCount] = {}
     groups: dict[str, dict[str, GroupCount]] = {}
     with catalog.reading() as held:

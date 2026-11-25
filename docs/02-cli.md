@@ -121,13 +121,14 @@ reference-store delete-entry <name> [--store <store>]
 ## Listing
 
 ```
-reference-store list-entries [--tag <tag>]... [--file-tag <tag>]... [--any] [--min-rating <1-5>] [--site <site>]
-    [--store <store>] [--sort <sort>] [--descending | --ascending] [--limit <n>] [--after <after>]
+reference-store list-entries [--tag <tag>]... [--file-tag <tag>]... [--any] [--min-rating <1-5>]
+    [--site <site>]... [--without-tags] [--without-site] [--store <store>] [--sort <sort>]
+    [--descending | --ascending] [--limit <n>] [--after <after>]
 reference-store list-tags [--store <store>]
 reference-store list-sites [--store <store>]
 ```
 
-- `tags` and `file_tags`: repeat `--tag` and `--file-tag` for each one.
+- `tags`, `file_tags`, and `sites`: repeat `--tag`, `--file-tag`, and `--site` for each one.
 - `tag_match`: `--any` for `any`.
 - `descending`: `--descending` or `--ascending`. Without either, the sort's own order.
 
@@ -181,10 +182,11 @@ files: 4, 2.1 MB
 
 ```
 reference-store grep-entries <pattern> [--field <field>]... [--glob <pattern>] [--ignore-case] [--tag <tag>]...
-    [--file-tag <tag>]... [--any] [--min-rating <1-5>] [--site <site>] [--store <store>] [--matches-per-entry <n>]
-    [--limit <n>] [--after <after>]
+    [--file-tag <tag>]... [--any] [--min-rating <1-5>] [--site <site>]... [--without-tags] [--without-site]
+    [--store <store>] [--matches-per-entry <n>] [--limit <n>] [--after <after>]
 reference-store glob-files <pattern> [--file-tag <tag>]... [--tag <tag>]... [--any] [--min-rating <1-5>]
-    [--site <site>] [--store <store>] [--limit <n>] [--after <after>]
+    [--site <site>]... [--without-tags] [--without-site] [--store <store>] [--sort <sort>]
+    [--descending | --ascending] [--limit <n>] [--after <after>]
 ```
 
 - `fields`: repeat `--field` for each one.
@@ -201,7 +203,7 @@ game-1 (Game 1: The First One)  main  3 matches
 1 of 1 entry.
 ```
 
-`glob-files` prints a line for each file: its path starting with its entry's name, its store, its size, its tags, and its description.
+`glob-files` prints a line for each file: its path starting with its entry's name, its store, its size, its tags, and its description. With `--sort modified`, the day the file last changed comes after the store.
 
 ```console
 $ reference-store glob-files "**/*.png" --file-tag ux

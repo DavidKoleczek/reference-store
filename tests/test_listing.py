@@ -81,6 +81,9 @@ def test_entries_are_listed_filtered_sorted_and_paged_across_stores(workspace: P
     assert listed("--min-rating", "3") == ["alpha/game-1"]
     assert listed("--site", "github.com/SOME-ORG") == ["beta/game-1", "alpha/game-1"]
     assert listed("--site", "x.com") == ["alpha/game-2"]
+    assert listed("--site", "x.com", "--site", "example.com") == ["alpha/notes", "alpha/game-2"]
+    assert listed("--without-tags") == ["alpha/notes"]
+    assert listed("--without-site") == ["beta/by-hand"]
     assert listed("--store", "beta", "--sort", "files") == ["beta/by-hand", "beta/game-1"]
 
     # The title counts as the name, and ties go by name, then by store.
@@ -122,6 +125,8 @@ def test_entries_are_listed_filtered_sorted_and_paged_across_stores(workspace: P
         ["--sort", "size", "--after", after],
         ["--limit", "0"],
         ["--site", "example.com/a"],
+        ["--tag", "game", "--without-tags"],
+        ["--site", "x.com", "--without-site"],
         ["--store", "nope"],
     ):
         result = runner.invoke(app, ["list-entries", *args])

@@ -218,7 +218,9 @@ def list_entries(
     file_tags: list[str] | None = None,
     tag_match: Literal["all", "any"] = "all",
     min_rating: int | None = None,
-    site: str | None = None,
+    sites: list[str] | None = None,
+    without_tags: bool = False,
+    without_site: bool = False,
     store: str | None = None,
     sort: Literal["name", "created", "updated", "rating", "size", "files", "tags", "store"] = "created",
     descending: bool | None = None,
@@ -239,7 +241,9 @@ Returns a page of entries.
 - `file_tags`: keeps the entries with a file that has every one.
 - `tag_match`: with `any`, one of the tags is enough, and a file with one of the file tags.
 - `min_rating`: keeps the entries rated that or better.
-- `site`: keeps the entries whose `url` is on a site, such as `github.com`, or in one group on it, such as `github.com/octocat`. See [`list_sites`](#list_sites).
+- `sites`: keeps the entries whose `url` is on one of them. Each is a site, such as `github.com`, or one group on it, such as `github.com/octocat`. See [`list_sites`](#list_sites).
+- `without_tags`: keeps the entries with no tags.
+- `without_site`: keeps the entries that link to no site, which are the ones `list_sites` doesn't count.
 - `sort`: names, tags, and stores go from A, and the rest start with the newest, the best, or the largest. The title counts as the name, and an entry's tags are read as one line of text. Ties go by name, and an entry with no rating or no tags comes last.
 - `descending`: turns the sort's order around.
 - `after`: the `after` of the page before, to get the next one with the same `sort`. It marks the last entry shown, so entries added or removed in between don't make the next page skip or repeat any.
@@ -492,7 +496,9 @@ def grep_entries(
     file_tags: list[str] | None = None,
     tag_match: Literal["all", "any"] = "all",
     min_rating: int | None = None,
-    site: str | None = None,
+    sites: list[str] | None = None,
+    without_tags: bool = False,
+    without_site: bool = False,
     store: str | None = None,
     matches_per_entry: int = 5,
     limit: int = 100,
@@ -554,8 +560,12 @@ def glob_files(
     tags: list[str] | None = None,
     tag_match: Literal["all", "any"] = "all",
     min_rating: int | None = None,
-    site: str | None = None,
+    sites: list[str] | None = None,
+    without_tags: bool = False,
+    without_site: bool = False,
     store: str | None = None,
+    sort: Literal["path", "name", "modified", "size", "type"] = "path",
+    descending: bool | None = None,
     limit: int = 100,
     after: str | None = None,
 ) -> FileListing
@@ -572,14 +582,17 @@ class FileListing(BaseModel):
     after: str | None  # None on the last page
 ```
 
-Returns the files whose path matches a pattern, entry by entry, in the order of their paths.
+Returns the files whose path matches a pattern, entry by entry in the order of their paths, unless sorted.
 
 - `pattern`: a glob, where `*` matches within a name and `**` any number of folders. It is matched against the file's path starting with the entry's name, whatever the case, so `game-1/**/*.png` is every PNG in one entry and `**/*.md` every Markdown file in all of them.
 - `file_tags`: keeps the files that have every tag, or one of them with `tag_match="any"`. The other filters are about the files' entries.
+- `sort`: `name` is the file's name without its folders, `modified` when the file last changed, and `type` the end of its name, such as `.png`. Paths, names, and types go from A, and the rest start with the newest or the largest. Ties go in the order of the paths.
+- `descending`: turns the sort's order around.
 
 ```python
 glob_files("game-1/screenshots/**/*.png")
 glob_files("**/*.png", file_tags=["ux"])
+glob_files("**", sort="modified", limit=20)
 ```
 
 ## Large stores
@@ -785,7 +798,7 @@ A project's store is not in `config.json`. Its `.reference-store` folder is all 
 - A link the pattern matches is on that site, and what the pattern captures as `group` is its group. So `(?:x|twitter)\.com` counts `twitter.com` links as `x.com`.
 - A site here replaces the library's own pattern for it, and `null` turns that off. Patterns here are tried first, in order, then the library's.
 - A link no pattern matches is on the site its host names, with no group.
-- A pattern that isn't a regular expression makes `list_sites` and the `site` filters raise, saying which one. Nothing else stops working.
+- A pattern that isn't a regular expression makes `list_sites` and the `sites` filters raise, saying which one. Nothing else stops working.
 
 The library's own patterns are in [sites.py](../src/reference_store/core/sites.py).
 

@@ -113,6 +113,7 @@ class Entry(EntrySummary):
 
 TagMatch = Literal["all", "any"]
 EntrySort = Literal["name", "created", "updated", "rating", "size", "files", "tags", "store"]
+FileSort = Literal["path", "name", "modified", "size", "type"]
 
 
 class EntryListing(BaseModel):
