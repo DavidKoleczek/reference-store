@@ -84,6 +84,38 @@ files: 2, 1.3 MB
 
 Times are local. With `--json`, they are in UTC, and each file also has its notes and when it was modified.
 
+## Listing
+
+```
+reference-store list-entries [--tag <tag>]... [--file-tag <tag>]... [--any] [--min-rating <1-5>] [--site <site>]
+    [--store <store>] [--sort <sort>] [--descending | --ascending] [--limit <n>] [--after <after>]
+reference-store list-tags [--store <store>]
+reference-store list-sites [--store <store>]
+```
+
+- `tags` and `file_tags`: repeat `--tag` and `--file-tag` for each one.
+- `tag_match`: `--any` for `any`.
+- `descending`: `--descending` or `--ascending`. Without either, the sort's own order.
+
+`list-entries` prints a line for each entry: its name, its title in brackets, its store, when it was added (or last changed, with `--sort updated`), its files, its rating, and its tags. The last line says how many there are, and what to pass for the next page.
+
+```console
+$ reference-store list-entries --sort name --limit 2
+game-1 (Game 1: The First One)  main  2026-01-05  2 files, 1.3 MB  rated 4  [game, puzzle]
+game-2  main  2026-01-06  0 files  [game]
+2 of 46 entries. For the next page: --after WyJjOWZjMDciLGZhbHNlLCJnYW1lLTIiLCJnYW1lLTIiLCJtYWluIl0
+```
+
+`list-tags` prints a line for each tag, and `list-sites` one for each site with its groups under it.
+
+```console
+$ reference-store list-sites
+github.com: 5 entries
+  octocat: 3 entries
+  some-org: 1 entry
+example.com: 2 entries
+```
+
 ## App
 
 ```

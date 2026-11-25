@@ -76,6 +76,41 @@ class Entry(EntrySummary):
     files: list[EntryFile]
 
 
+TagMatch = Literal["all", "any"]
+EntrySort = Literal["name", "created", "updated", "rating", "size", "files", "tags", "store"]
+
+
+class EntryListing(BaseModel):
+    """A page of entries."""
+
+    entries: list[EntrySummary]
+    total: int
+    after: str | None  # None on the last page
+
+
+class TagCount(BaseModel):
+    """A tag, and how many entries and files have it."""
+
+    tag: str
+    entries: int
+    files: int
+
+
+class GroupCount(BaseModel):
+    """A group on a site that entries link to, and how many do."""
+
+    group: str  # such as an owner on GitHub, a user on X, or a subreddit
+    entries: int
+
+
+class SiteCount(BaseModel):
+    """A site entries link to, and how many do."""
+
+    site: str  # such as github.com
+    entries: int
+    groups: list[GroupCount]
+
+
 class App(BaseModel):
     """The app while it is being served."""
 

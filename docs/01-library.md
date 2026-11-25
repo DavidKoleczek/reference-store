@@ -157,11 +157,11 @@ class TagCount(BaseModel):
 class SiteCount(BaseModel):
     site: str  # such as github.com
     entries: int
-    owners: list[OwnerCount]
+    groups: list[GroupCount]
 
 
-class OwnerCount(BaseModel):
-    owner: str  # such as an organization on GitHub, or a user on X
+class GroupCount(BaseModel):
+    group: str  # such as an owner on GitHub, a user on X, or a subreddit
     entries: int
 ```
 
@@ -173,15 +173,16 @@ class OwnerCount(BaseModel):
 - `preview` is an image that lets you see what the entry is about. It can be not set, providing a `source` path will copy the image into the entry, or providing a `file` path will use one of the entry's files. `url` can be used to set the source of the preview image. The image can be a PNG, JPEG, WebP, GIF, AVIF, BMP, or SVG.
 - `add_entry` only saves what it is given. It never fetches anything. `files` are copied in as `add_files` does.
 - `created` is when the entry is added. Pass it to keep the date of a reference that was saved somewhere else before. Times are kept in UTC, and one with no time zone is taken as local time.
-- `list_entries` returns entries that have every tag in `tags`, and with `file_tags`, a file that has every one of those. With `tag_match="any"`, one of the tags is enough.
-- `site` keeps the entries whose `url` is on a site, such as `github.com`, or is one owner's on it, such as `github.com/octocat`.
-- `sort` orders them by name, by when they were added or last changed, by rating, by the size of their files, by how many they have, by their tags, or by their store. Names, tags, and stores go from A. The title counts as the name when there is one, and an entry's tags are read as one line of text. The rest start with the newest, the best, or the largest. `descending` turns either around.
-- It returns a page of `limit` entries, and `total` says how many there are in all. Pass the page's `after` to get the next one.
+- `list_entries` returns entries that have every tag in `tags`, and with `file_tags`, a file that has every one of those. With `tag_match="any"`, one of the tags is enough, and a file with one of the file tags. `min_rating` keeps the entries rated that or better.
+- `site` keeps the entries whose `url` is on a site, such as `github.com`, or in one group on it, such as `github.com/octocat`.
+- `sort` orders them by name, by when they were added or last changed, by rating, by the size of their files, by how many they have, by their tags, or by their store. Names, tags, and stores go from A. The title counts as the name when there is one, and an entry's tags are read as one line of text. The rest start with the newest, the best, or the largest. `descending` turns either around. Ties go by name, and an entry with no rating or no tags comes last either way.
+- It returns a page of `limit` entries, and `total` says how many there are in all. Pass the page's `after` to get the next one, with the same `sort`. An `after` marks the last entry shown, so entries added or removed in between don't make the next page skip or repeat any.
 - `update_entry` keeps any field you leave out. Pass None to clear `title`, `url`, `rating`, or `preview`. Tags are added and removed rather than replaced, so two callers tagging the same entry don't undo each other.
 - `move_entry` moves an entry and its files to another store. It is refused when that store already has the name.
 - `delete_entry` deletes the entry and its files.
-- `list_tags` returns each tag with how many entries and how many files have it. Check it before making up a new tag.
-- `list_sites` returns each site the entries link to with how many do, the most first. On a site whose links start with whose page it is, such as `github.com/<owner>` and `x.com/<user>`, it also says how many entries each owner has. A site is named without `www.`.
+- `list_tags` returns each tag with how many entries and how many files have it, the most used first. Check it before making up a new tag.
+- `list_sites` returns each site the entries link to with how many do, the most first. A site is named without `www.`.
+- On some sites, a link is also in a group, such as an owner on GitHub, a user on X, or a subreddit. `list_sites` says how many entries each group has. Out of the box, that is GitHub, GitLab, Codeberg, Hugging Face, X, Bluesky, Reddit, YouTube, itch.io, and GitHub Pages, and `twitter.com` counts as `x.com`. [`sites`](#sites) in the configuration changes or adds to them.
 
 ## Files in an entry
 
@@ -289,6 +290,7 @@ What the library keeps for itself starts with a dot, so it is easy to tell from 
 `.entry.json` and the copied-in preview are all the library adds to an entry's folder, and they are not among the entry's files. `preview.file` in `.entry.json` is the path of whichever file is the preview. The folder can be handed to any other program as it is.
 Files you put in an entry's folder yourself are listed like any other, and renaming the folder renames the entry.
 An `.entry.json` you write yourself only needs what you want to say, even `{}`. The library adds the `id` and the dates the first time it reads it.
+One that can't be read, such as one with a typo in its JSON, leaves its entry out of listings, and `get_entry` says what is wrong with it.
 A file you rename yourself loses what was said about it, and stops being the preview if it was. `rename_file` keeps both.
 
 ## Names and paths
@@ -517,7 +519,7 @@ By default it listens on `127.0.0.1` only. With `lan` it listens on the local ne
 Everything kept on the machine is in one `reference-store` folder in the user's config folder: `%APPDATA%` on Windows, `~/Library/Application Support` on macOS, and `$XDG_CONFIG_HOME` or `~/.config` on Linux.
 Set `REFERENCE_STORE_HOME` to use another folder.
 
-- `config.json` has the stores, the default store, and the processors.
+- `config.json` has the stores, the default store, the sites, and the processors.
 - `processors/` is where processors run, and where their scripts are kept.
 - `index/` is what makes [large stores](#large-stores) quick to list. It is rebuilt when it is missing.
 - `locks/` keeps two processes from changing the same thing at once.
@@ -532,12 +534,29 @@ A project's store is not in `config.json`. Its `.reference-store` folder is all 
     {"name": "main", "location": "D:/references", "priority_order": 1},
     {"name": "shared", "location": "https://github.com/<owner>/<repo>", "priority_order": 2}
   ],
+  "sites": {
+    "substack.com": {"pattern": "(?P<group>[^./]+)\\.substack\\.com"},
+    "docs.example.com": {"pattern": "docs\\.example\\.com/(?P<group>[^/]+)"},
+    "youtube.com": null
+  },
   "processors": [
     {"name": "web-page", "command": ["uv", "run", "--script", "web_page.py"], "description": "Saves a copy of the page at the entry's url."},
     {"name": "summary", "command": ["summarize-page"], "description": "Writes a summary of the saved page."}
   ]
 }
 ```
+
+### Sites
+
+`sites` says how to tell which site a link is on, and its group there. Edit it by hand to add a site the library doesn't know, or to change one it does, without waiting for a new version.
+
+- `pattern` is a regular expression, matched without regard to case against the start of a link with no scheme or `www.`, such as `github.com/octocat/hello-world`. It has to cover the whole host.
+- A link the pattern matches is on that site, and what the pattern captures as `group` is its group. So `(?:x|twitter)\.com` counts `twitter.com` links as `x.com`.
+- A site here replaces the library's own pattern for it, and `null` turns that off. Patterns here are tried first, in order, then the library's.
+- A link no pattern matches is on the site its host names, with no group.
+- A pattern that isn't a regular expression makes `list_sites` and the `site` filters raise, saying which one. Nothing else stops working.
+
+The library's own patterns are in [sites.py](../src/reference_store/core/sites.py).
 
 ## Skill
 

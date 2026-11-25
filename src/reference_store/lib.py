@@ -3,8 +3,11 @@
 from datetime import datetime
 
 from reference_store.app.server import AppServer
-from reference_store.core import entries, stores
-from reference_store.models import Entry, NewPreview, Store
+from reference_store.capabilities.listing import listing
+from reference_store.capabilities.manage_entries import manage_entries
+from reference_store.capabilities.manage_stores import manage_stores
+from reference_store.core import stores
+from reference_store.models import Entry, EntryListing, EntrySort, NewPreview, SiteCount, Store, TagCount, TagMatch
 from reference_store.skill import skill as skill_module
 
 
@@ -21,7 +24,7 @@ def add_store(name: str, location: str, default: bool = False) -> Store:
         ReferenceStoreError: The name breaks a rule or is taken, the folder is registered already, or it can't be made
             into a store.
     """
-    return stores.add_store(name, location, default)
+    return manage_stores.add_store(name, location, default)
 
 
 def list_stores() -> list[Store]:
@@ -38,7 +41,7 @@ def set_default_store(name: str) -> Store:
     Raises:
         ReferenceStoreError: There is no registered store with that name.
     """
-    return stores.set_default_store(name)
+    return manage_stores.set_default_store(name)
 
 
 def set_store_priority(name: str, priority_order: int) -> list[Store]:
@@ -49,7 +52,7 @@ def set_store_priority(name: str, priority_order: int) -> list[Store]:
     Raises:
         ReferenceStoreError: There is no registered store with that name, or no such place.
     """
-    return stores.set_store_priority(name, priority_order)
+    return manage_stores.set_store_priority(name, priority_order)
 
 
 def remove_store(name: str) -> None:
@@ -60,7 +63,7 @@ def remove_store(name: str) -> None:
     Raises:
         ReferenceStoreError: There is no registered store with that name.
     """
-    stores.remove_store(name)
+    manage_stores.remove_store(name)
 
 
 def add_entry(
@@ -89,7 +92,7 @@ def add_entry(
         ReferenceStoreError: The name breaks a rule or is taken in the store, the rating is outside 1 to 5, the
             preview can't be one, or there is no store to add it to.
     """
-    return entries.add_entry(name, title, description, url, tags, notes, rating, preview, created, store)
+    return manage_entries.add_entry(name, title, description, url, tags, notes, rating, preview, created, store)
 
 
 def get_entry(name: str, store: str | None = None) -> Entry:
@@ -100,7 +103,63 @@ def get_entry(name: str, store: str | None = None) -> Entry:
     Raises:
         ReferenceStoreError: There is no entry with that name, or the store named can't be used.
     """
-    return entries.get_entry(name, store)
+    return manage_entries.get_entry(name, store)
+
+
+def list_entries(
+    tags: list[str] | None = None,
+    file_tags: list[str] | None = None,
+    tag_match: TagMatch = "all",
+    min_rating: int | None = None,
+    site: str | None = None,
+    store: str | None = None,
+    sort: EntrySort = "created",
+    descending: bool | None = None,
+    limit: int = 100,
+    after: str | None = None,
+) -> EntryListing:
+    """Returns a page of entries, from every store or the one named.
+
+    It keeps the entries that have every tag in `tags`, and with `file_tags`, a file that has every one of those.
+    With `tag_match="any"`, one of them is enough. `min_rating` keeps the entries rated that or better, and `site`
+    the entries that link to a site, such as `github.com`, or to a group on it, such as `github.com/octocat`.
+
+    `sort` orders them by name, by when they were added or last changed, by rating, by the size of their files, by
+    how many they have, by their tags, or by their store. Names, tags, and stores go from A, and the title counts as
+    the name when there is one. The rest start with the newest, the best, or the largest. `descending` turns either
+    around. Ties go by name, and an entry with no rating or no tags comes last.
+
+    `total` says how many entries there are in all. Pass the page's `after` to get the next one.
+
+    Raises:
+        ReferenceStoreError: A filter can't be one, `limit` is less than 1, `after` came from another sort, or the
+            store named can't be used.
+    """
+    return listing.list_entries(tags, file_tags, tag_match, min_rating, site, store, sort, descending, limit, after)
+
+
+def list_tags(store: str | None = None) -> list[TagCount]:
+    """Returns each tag with how many entries and how many files have it, the most used first.
+
+    Tags that differ only by case are the same tag. Check this before making up a new one.
+
+    Raises:
+        ReferenceStoreError: The store named can't be used.
+    """
+    return listing.list_tags(store)
+
+
+def list_sites(store: str | None = None) -> list[SiteCount]:
+    """Returns each site the entries link to with how many do, the most first. A site is named without `www.`.
+
+    On a site whose links have groups, such as owners on GitHub, users on X, or subreddits, it also says how many
+    entries each group has. `sites` in `config.json` adds sites with groups, or changes how they are told.
+
+    Raises:
+        ReferenceStoreError: The store named can't be used, or a site pattern in `config.json` isn't a regular
+            expression.
+    """
+    return listing.list_sites(store)
 
 
 def app_server() -> AppServer:

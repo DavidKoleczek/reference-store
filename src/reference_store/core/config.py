@@ -28,11 +28,18 @@ class StoreRecord(BaseModel):
     priority_order: int
 
 
+class SiteRule(BaseModel):
+    """How to tell a site's links and their groups apart, as `config.json` has it."""
+
+    pattern: str  # a regular expression, with a named group `group` when the site's links have groups
+
+
 class Config(BaseModel):
     """What `config.json` holds."""
 
     default_store: str | None = None
     stores: list[StoreRecord] = []
+    sites: dict[str, SiteRule | None] = {}  # None turns off a site the library ships
 
 
 def home() -> Path:

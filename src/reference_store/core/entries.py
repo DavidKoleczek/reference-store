@@ -1,13 +1,12 @@
-"""Entries: the folders in a store that have an `.entry.json`, what it says about them, and the files in them."""
+"""An entry on disk: a folder in a store with an `.entry.json`, what that says about it, and the files in it."""
 
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 import contextlib
 from datetime import UTC, datetime
 import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
 import stat
 from typing import Any
 import uuid
@@ -15,7 +14,7 @@ import uuid
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from reference_store.core import config, disk, names, stores
-from reference_store.models import Entry, EntryFile, NewPreview, Preview, ReferenceStoreError, Store
+from reference_store.models import Entry, EntryFile, EntrySummary, Preview, ReferenceStoreError, Store
 
 ENTRY_FILE = ".entry.json"
 # A preview copied in is `.preview` with the image's extension, at the top of the entry.
@@ -61,81 +60,42 @@ class EntryRecord(BaseModel):
         return in_utc(moment)
 
 
-def add_entry(
-    name: str,
-    title: str | None,
-    description: str,
-    url: str | None,
-    tags: list[str] | None,
-    notes: str,
-    rating: int | None,
-    preview: NewPreview | None,
-    created: datetime | None,
-    store: str | None,
-) -> Entry:
-    """Adds an entry with what it is given, to the store named, the project's, or the default."""
-    names.check_name(name, "an entry")
-    check_rating(rating)
-    target = _store_to_add_to(store)
-    folder = target.path / name
-    names.check_full_path(folder / ENTRY_FILE, "the entry's name")
-    image = _preview_image(preview)
-    now = in_utc(datetime.now(UTC))
-    record = EntryRecord(
-        id=str(uuid.uuid4()),
-        title=title or None,
-        description=description,
-        url=url or None,
-        tags=clean_tags(tags or []),
-        notes=notes,
-        rating=rating,
-        created=in_utc(created) if created else now,
-        updated=now,
-    )
-    if image is not None:
-        record.preview = PreviewRecord(
-            file=f"{PREVIEW_STEM}{image.suffix.lower()}", url=preview.url if preview else None
-        )
-        names.check_full_path(folder / record.preview.file, "the entry's name")
-    with locked(folder):
-        taken = _child(target.path, name)
-        if taken is not None:
-            kind = "an entry" if (taken / ENTRY_FILE).is_file() else "a folder" if taken.is_dir() else "a file"
-            raise ReferenceStoreError(
-                f"The store {target.name} already has {kind} named {taken.name}. Pick another name, or another store."
-            )
-        if target.priority_order == 0:
-            stores.make_store(target.path)
-        folder.mkdir()
-        try:
-            if image is not None and record.preview is not None:
-                shutil.copyfile(image, folder / record.preview.file)
-            write(folder, record)
-        except BaseException:
-            shutil.rmtree(folder, ignore_errors=True)
-            raise
-    return entry_of(target, folder, record)
-
-
-def get_entry(name: str, store: str | None) -> Entry:
-    """Returns the entry with that name, from the store named, or the one with the highest priority that has it."""
-    target, folder = find(name, store)
-    return entry_of(target, folder, read(folder))
-
-
 def find(name: str, store: str | None) -> tuple[Store, Path]:
     """Returns the entry's store and folder: in the store named, or the store with the highest priority that has it.
 
     Raises:
         ReferenceStoreError: No store searched has an entry with that name, or the store named can't be used.
     """
-    searched = [stores.find_store(store)] if store is not None else [s for s in stores.list_stores() if s.available]
+    searched = stores.searched(store)
     for each in searched:
-        folder = _child(each.path, name)
+        folder = child(each.path, name)
         if folder is not None and (folder / ENTRY_FILE).is_file():
             return each, folder
     where = f"the store {searched[0].name}" if store is not None else "any store"
     raise ReferenceStoreError(f"There is no entry named {name} in {where}.")
+
+
+def entries_in(store: Store) -> Iterator[Entry]:
+    """Yields each entry in the store, in the order of their names.
+
+    An entry whose `.entry.json` can't be read is left out, so one broken by hand or removed while it is read doesn't
+    hide the rest. `get_entry` says what is wrong with it.
+    """
+    try:
+        with os.scandir(store.path) as found:
+            folders = sorted(
+                (Path(item.path) for item in found if item.is_dir()), key=lambda path: names.key(path.name)
+            )
+    except OSError:
+        return
+    for folder in folders:
+        if not (folder / ENTRY_FILE).is_file():
+            continue
+        try:
+            record = read(folder)
+        except (ReferenceStoreError, OSError):
+            continue
+        yield entry_of(store, folder, record)
 
 
 def read(folder: Path) -> EntryRecord:
@@ -189,6 +149,11 @@ def entry_of(store: Store, folder: Path, record: EntryRecord) -> Entry:
     )
 
 
+def summary_of(entry: Entry) -> EntrySummary:
+    """Returns the entry without its files."""
+    return EntrySummary(**{field: getattr(entry, field) for field in EntrySummary.model_fields})
+
+
 @contextlib.contextmanager
 def locked(folder: Path) -> Generator[None]:
     """Holds the entry's lock, so only one process changes it at a time."""
@@ -227,44 +192,7 @@ def check_rating(rating: int | None) -> None:
         raise ReferenceStoreError(f"A rating goes from 1 to 5, where 5 is the best, so it can't be {rating}.")
 
 
-def _store_to_add_to(store: str | None) -> Store:
-    if store is not None:
-        return stores.find_store(store)
-    listed = stores.list_stores()
-    target = next((each for each in listed if each.priority_order == 0), None) or next(
-        (each for each in listed if each.default), None
-    )
-    if target is None:
-        raise ReferenceStoreError("There is no store to add it to. Register one first.")
-    if not target.available:
-        raise ReferenceStoreError(
-            f"The default store {target.name} is not available, since {target.path} can't be reached. Name another "
-            "store to add it to."
-        )
-    return target
-
-
-def _preview_image(preview: NewPreview | None) -> Path | None:
-    """Returns the image to copy in as the preview, refusing a preview that can't be one."""
-    if preview is None:
-        return None
-    if preview.source is not None and preview.file is not None:
-        raise ReferenceStoreError("A preview is a source or a file, not both.")
-    if preview.file is not None:
-        raise ReferenceStoreError(f"{preview.file} isn't one of the entry's files, so it can't be its preview.")
-    if preview.source is None:
-        raise ReferenceStoreError("A preview needs a source, an image to copy in.")
-    image = preview.source.expanduser().resolve()
-    if not image.is_file():
-        raise ReferenceStoreError(f"There is no image at {image}.")
-    if image.suffix.lower() not in PREVIEW_SUFFIXES:
-        raise ReferenceStoreError(
-            f"{image.name} can't be a preview. A preview is an image: {', '.join(PREVIEW_SUFFIXES)}."
-        )
-    return image
-
-
-def _child(folder: Path, name: str) -> Path | None:
+def child(folder: Path, name: str) -> Path | None:
     """Returns what is in the folder under that name, whatever its case, or None when there is nothing."""
     try:
         with os.scandir(folder) as found:

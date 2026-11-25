@@ -11,11 +11,22 @@ from pydantic import TypeAdapter
 import typer
 
 from reference_store import lib
-from reference_store.models import Entry, NewPreview, ReferenceStoreError, Store
+from reference_store.models import (
+    Entry,
+    EntrySort,
+    EntrySummary,
+    NewPreview,
+    ReferenceStoreError,
+    SiteCount,
+    Store,
+    TagCount,
+)
 from reference_store.skill.skill import DISTRIBUTION
 
 JSON_HELP = "Print the result as JSON."
 STORES = TypeAdapter(list[Store])
+TAGS = TypeAdapter(list[TagCount])
+SITES = TypeAdapter(list[SiteCount])
 SIZE_UNITS = ("bytes", "KB", "MB", "GB", "TB")
 
 app = typer.Typer(
@@ -105,6 +116,27 @@ def _describe_entry(entry: Entry) -> str:
         description = f"  {file.description}" if file.description else ""
         lines.append(f"  {file.path}  {_size(file.size)}{tags}{description}")
     return "\n".join(lines)
+
+
+def _counted(count: int, one: str, many: str) -> str:
+    return f"{count} {one if count == 1 else many}"
+
+
+def _describe_summary(entry: EntrySummary, sort: EntrySort) -> str:
+    """The entry as one line: its name and title, then its store, a date, its files, its rating, and its tags."""
+    moment = entry.updated if sort == "updated" else entry.created
+    files = _counted(entry.file_count, "file", "files")
+    facts = [
+        entry.store,
+        f"{moment.astimezone():%Y-%m-%d}",
+        f"{files}, {_size(entry.size)}" if entry.file_count else files,
+    ]
+    if entry.rating is not None:
+        facts.append(f"rated {entry.rating}")
+    if entry.tags:
+        facts.append(f"[{', '.join(entry.tags)}]")
+    title = f" ({entry.title})" if entry.title else ""
+    return "  ".join([f"{entry.name}{title}", *facts])
 
 
 def _print_version(value: bool) -> None:
@@ -232,6 +264,103 @@ def get_entry(
     with _reported():
         entry = lib.get_entry(name, store)
     typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
+
+
+@app.command()
+def list_entries(
+    tag: Annotated[
+        list[str] | None, typer.Option(help="Keep entries with this tag. Repeat it for each one, and they need all.")
+    ] = None,
+    file_tag: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Keep entries with a file that has this tag. Repeat it for each one, and the file needs all."
+        ),
+    ] = None,
+    any_: Annotated[
+        bool, typer.Option("--any", help="One of the tags is enough, and one of the file tags on a file.")
+    ] = False,
+    min_rating: Annotated[int | None, typer.Option(help="Keep entries rated this or better, from 1 to 5.")] = None,
+    site: Annotated[
+        str | None,
+        typer.Option(
+            help="Keep entries that link to a site, such as github.com, or to a group on it, such as github.com/octocat."
+        ),
+    ] = None,
+    store: Annotated[str | None, typer.Option(help="List only this store. Without it, every store.")] = None,
+    sort: Annotated[
+        EntrySort,
+        typer.Option(help="What to order them by. Names, tags, and stores go from A. The rest start with the most."),
+    ] = "created",
+    descending: Annotated[
+        bool | None, typer.Option("--descending/--ascending", help="Turn the order around.", show_default=False)
+    ] = None,
+    limit: Annotated[int, typer.Option(help="How many to list at once.")] = 100,
+    after: Annotated[str | None, typer.Option(help="Carry on from the page that printed this.")] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """List the entries a page at a time, newest first unless sorted otherwise.
+
+    The title shows in brackets after the name, and the date is when the entry was added, or last changed with --sort updated.
+    """
+    with _reported():
+        listing = lib.list_entries(
+            tag, file_tag, "any" if any_ else "all", min_rating, site, store, sort, descending, limit, after
+        )
+    if json:
+        typer.echo(listing.model_dump_json(indent=2))
+        return
+    if not listing.total:
+        typer.echo("No entries match." if tag or file_tag or min_rating or site else "There are no entries.")
+        return
+    for entry in listing.entries:
+        typer.echo(_describe_summary(entry, sort))
+    shown = f"{len(listing.entries)} of {_counted(listing.total, 'entry', 'entries')}."
+    typer.echo(f"{shown} For the next page: --after {listing.after}" if listing.after else shown)
+
+
+@app.command()
+def list_tags(
+    store: Annotated[str | None, typer.Option(help="Count only this store. Without it, every store.")] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """List each tag with how many entries and files have it, the most used first. Check it before making up a tag."""
+    with _reported():
+        tags = lib.list_tags(store)
+    if json:
+        typer.echo(TAGS.dump_json(tags, indent=2).decode())
+        return
+    if not tags:
+        typer.echo("No entry or file has a tag yet.")
+    for count in tags:
+        counts = [
+            _counted(number, one, many)
+            for number, one, many in ((count.entries, "entry", "entries"), (count.files, "file", "files"))
+            if number
+        ]
+        typer.echo(f"{count.tag}: {', '.join(counts)}")
+
+
+@app.command()
+def list_sites(
+    store: Annotated[str | None, typer.Option(help="Count only this store. Without it, every store.")] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """List each site the entries link to with how many do, the most first, and under it how many each group has.
+
+    A group is a part of a site, such as an owner on GitHub, a user on X, or a subreddit. The sites with groups, and how to tell them, can be changed in config.json.
+    """
+    with _reported():
+        sites = lib.list_sites(store)
+    if json:
+        typer.echo(SITES.dump_json(sites, indent=2).decode())
+        return
+    if not sites:
+        typer.echo("No entry links to a site yet.")
+    for site in sites:
+        typer.echo(f"{site.site}: {_counted(site.entries, 'entry', 'entries')}")
+        for group in site.groups:
+            typer.echo(f"  {group.group}: {_counted(group.entries, 'entry', 'entries')}")
 
 
 @app.command()

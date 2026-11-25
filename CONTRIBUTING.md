@@ -67,6 +67,15 @@ Run tests:
 uv run pytest
 ```
 
+### Code layout
+
+The library is in `src/reference_store/`:
+
+- `lib.py` is everything the library does, and the only module callers use. `cli.py` and the app wrap it.
+- `models.py` holds what `lib.py` takes and returns.
+- `capabilities/<name>/` holds one feature each, such as `manage_entries/` or `listing/`. `lib.py` calls into them, and they don't import each other.
+- `core/` holds what more than one capability uses, such as the configuration, the name rules, and reading an entry from its folder.
+
 ### App
 
 `app/` holds the app's frontend: Vite, TypeScript, React, and Tailwind. It has two builds:
