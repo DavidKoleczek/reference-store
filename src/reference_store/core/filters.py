@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from reference_store.core import entries, names, sites
 from reference_store.core.sites import SiteFilter
-from reference_store.models import Entry, EntryFile, ReferenceStoreError, TagMatch
+from reference_store.models import Entry, EntryFile, EntrySummary, ReferenceStoreError, TagMatch
 
 
 @dataclass(frozen=True)
@@ -19,23 +19,39 @@ class Filters:
 
     def keeps(self, entry: Entry) -> bool:
         """Returns whether the entry passes every filter."""
+        if not self.keeps_summary(entry):
+            return False
+        return any(self.keeps_file(file) for file in entry.files) if self.file_tags else True
+
+    def keeps_summary(self, entry: EntrySummary) -> bool:
+        """Returns whether the entry passes the filters that are about the entry, and not about its files."""
         if self.min_rating is not None and (entry.rating is None or entry.rating < self.min_rating):
             return False
         if self.site is not None and not self.site.keeps(entry.url):
             return False
-        if self.tags and not self.has_tags(entry.tags, self.tags):
-            return False
-        return any(self.keeps_file(file) for file in entry.files) if self.file_tags else True
+        return not self.tags or self.has_tags(entry.tags, self.tags)
 
     def keeps_file(self, file: EntryFile) -> bool:
         """Returns whether a file has the file tags, which every file does when there are none."""
-        return not self.file_tags or self.has_tags(file.tags, self.file_tags)
+        return self.keeps_file_tags(file.tags)
+
+    def keeps_file_tags(self, tags: list[str]) -> bool:
+        """Returns whether a file with these tags has the file tags."""
+        return not self.file_tags or self.has_tags(tags, self.file_tags)
+
+    @property
+    def about_entries(self) -> bool:
+        """Whether a filter that is about the entry, and not about its files, is set."""
+        return self.min_rating is not None or self.site is not None or bool(self.tags)
 
     def has_tags(self, tags: list[str], wanted: list[str]) -> bool:
         """Returns whether the tags hold every one wanted, or one of them when `tag_match` is `any`."""
         held = {names.key(tag) for tag in tags}
         found = (names.key(tag) in held for tag in wanted)
         return any(found) if self.tag_match == "any" else all(found)
+
+
+EVERYTHING = Filters(tags=[], file_tags=[], tag_match="all", min_rating=None, site=None)
 
 
 def filters(

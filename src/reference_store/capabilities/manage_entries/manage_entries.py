@@ -6,6 +6,7 @@ import shutil
 import uuid
 
 from reference_store.core import disk, entries, names, new_files, stores
+from reference_store.core.catalog import catalog
 from reference_store.core.entries import ENTRY_FILE, EntryRecord, PreviewRecord
 from reference_store.models import Entry, NewFile, NewPreview, NotGiven, ReferenceStoreError, Store
 
@@ -69,13 +70,17 @@ def add_entry(
             shutil.rmtree(folder, ignore_errors=True)
             raise
         new_files.finish_moves(placings)
+    catalog.changed(target, name)
     return entries.entry_of(target, folder, record)
 
 
 def get_entry(name: str, store: str | None) -> Entry:
     """Returns the entry with that name, from the store named, or the one with the highest priority that has it."""
     target, folder = entries.find(name, store)
-    return entries.entry_of(target, folder, entries.read(folder))
+    entry = entries.entry_of(target, folder, entries.read(folder))
+    # What was read may be news to the catalog, such as a file added by hand.
+    catalog.changed(target, folder.name)
+    return entry
 
 
 def update_entry(
@@ -130,6 +135,7 @@ def update_entry(
         # A copied-in preview is the library's own file, so it goes once nothing uses it.
         if old_copy is not None and (record.preview is None or names.key(record.preview.file) != names.key(old_copy)):
             (folder / old_copy).unlink(missing_ok=True)
+    catalog.changed(target, folder.name)
     return entries.entry_of(target, folder, record)
 
 
@@ -146,6 +152,7 @@ def delete_entry(name: str, store: str | None) -> None:
                 f"Couldn't delete {folder.name} from the store {target.name}: {error.strerror or error}. A file in it "
                 "may be open in another program. Close it and try again. Nothing was deleted."
             ) from None
+    catalog.changed(target, folder.name)
 
 
 def _store_to_add_to(store: str | None) -> Store:

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from reference_store.core import disk, entries, names, stores
+from reference_store.core.catalog import catalog
 from reference_store.core.entries import ENTRY_FILE
 from reference_store.models import Entry, ReferenceStoreError, Store
 
@@ -50,6 +51,8 @@ def _relocated(source: Store, folder: Path, destination: Store, new_folder: Path
             ) from None
         record.updated = entries.in_utc(datetime.now(UTC))
         entries.write(new_folder, record)
+    catalog.changed(source, folder.name)
+    catalog.changed(destination, new_folder.name)
     return entries.entry_of(destination, new_folder, record)
 
 

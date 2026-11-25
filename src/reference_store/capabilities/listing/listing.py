@@ -1,16 +1,14 @@
-"""Listing what the stores hold: their entries a page at a time, and the tags and sites across them.
-
-Each call reads the stores' folders, so what was changed by hand shows at once.
-"""
+"""Listing what the stores hold: their entries a page at a time, and the tags and sites across them."""
 
 from typing import get_args
 
-from reference_store.core import entries, filters, names, pages, sites
+from reference_store.core import filters, names, pages, sites
+from reference_store.core.catalog import catalog
 from reference_store.core.pages import Key
 from reference_store.models import (
-    Entry,
     EntryListing,
     EntrySort,
+    EntrySummary,
     GroupCount,
     ReferenceStoreError,
     SiteCount,
@@ -40,7 +38,8 @@ def list_entries(
         raise ReferenceStoreError(f"There is no sort {sort}. It is one of: {', '.join(SORTS)}.")
     keep = filters.filters(tags, file_tags, tag_match, min_rating, site)
     downward = sort in LARGEST_FIRST if descending is None else descending
-    found = [entry for entry in entries.every_entry(store) if keep.keeps(entry)]
+    with catalog.reading() as held:
+        found = held.summaries(keep, store)
     shown, total, next_after = pages.page(
         found,
         key=lambda entry: _sort_key(entry, sort),
@@ -50,7 +49,7 @@ def list_entries(
         after=after,
         made_for=f"entries sorted by {sort}, {'descending' if downward else 'ascending'}",
     )
-    return EntryListing(entries=[entries.summary_of(entry) for entry in shown], total=total, after=next_after)
+    return EntryListing(entries=shown, total=total, after=next_after)
 
 
 def list_tags(store: str | None) -> list[TagCount]:
@@ -59,11 +58,11 @@ def list_tags(store: str | None) -> list[TagCount]:
     Tags that differ only by case are one, spelled as it is first found.
     """
     counts: dict[str, TagCount] = {}
-    for entry in entries.every_entry(store):
-        for tag in entry.tags:
-            _counted(counts, tag).entries += 1
-        for file in entry.files:
-            for tag in file.tags:
+    with catalog.reading() as held:
+        for tags, tags_of_files in held.tags(store):
+            for tag in tags:
+                _counted(counts, tag).entries += 1
+            for tag in (tag for each in tags_of_files for tag in each):
                 _counted(counts, tag).files += 1
     return sorted(counts.values(), key=lambda count: (-(count.entries + count.files), names.key(count.tag)))
 
@@ -76,7 +75,9 @@ def list_sites(store: str | None) -> list[SiteCount]:
     known = sites.in_use()
     counts: dict[str, SiteCount] = {}
     groups: dict[str, dict[str, GroupCount]] = {}
-    for entry in entries.every_entry(store):
+    with catalog.reading() as held:
+        found = held.summaries(filters.EVERYTHING, store)
+    for entry in found:
         source = None if entry.url is None else known.source_of(entry.url)
         if source is None:
             continue
@@ -92,7 +93,7 @@ def list_sites(store: str | None) -> list[SiteCount]:
     return sorted(counts.values(), key=lambda count: (-count.entries, count.site))
 
 
-def _sort_key(entry: Entry, sort: EntrySort) -> Key:
+def _sort_key(entry: EntrySummary, sort: EntrySort) -> Key:
     """Returns whether the entry has nothing to sort by, what it is sorted by, its name, and its store."""
     value: str | int | None = {
         "name": names.key(entry.title or entry.name),

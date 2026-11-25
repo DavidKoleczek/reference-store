@@ -1,14 +1,17 @@
 """Everything Reference Store does. The CLI and the app are thin wrappers over this module."""
 
-from datetime import datetime
+from __future__ import annotations
 
-from reference_store.app.server import AppServer
+from datetime import datetime
+from typing import TYPE_CHECKING
+
 from reference_store.capabilities.listing import listing
 from reference_store.capabilities.manage_entries import manage_entries, relocate
 from reference_store.capabilities.manage_files import manage_files
 from reference_store.capabilities.manage_stores import manage_stores
 from reference_store.capabilities.search import search
 from reference_store.core import stores
+from reference_store.core.catalog import catalog
 from reference_store.models import (
     NOT_GIVEN,
     Entry,
@@ -26,6 +29,9 @@ from reference_store.models import (
     TagMatch,
 )
 from reference_store.skill import skill as skill_module
+
+if TYPE_CHECKING:
+    from reference_store.app.server import AppServer
 
 
 def add_store(name: str, location: str, default: bool = False) -> Store:
@@ -373,8 +379,24 @@ def glob_files(
     return search.glob_files(pattern, file_tags, tags, tag_match, min_rating, site, store, limit, after)
 
 
+def rebuild_index(store: str | None = None) -> None:
+    """Reads a store into the index again from its files, or every store that is available.
+
+    The index is what makes listing and glob quick in a large store. It keeps up with every change the library makes,
+    and with entries added, removed, or renamed any other way. A file added to an entry, changed, or removed by hand
+    shows once the store has had its daily check, which a read starts, or as soon as this has run.
+
+    Raises:
+        ReferenceStoreError: The store named can't be used, or the index couldn't be rebuilt.
+    """
+    catalog.rebuild(store)
+
+
 def app_server() -> AppServer:
     """Returns the app's server. `AppServer.open` serves the app in a browser page, and `close` stops it."""
+    # The server brings in the MCP and web packages, which take longer to load than every other call takes to run.
+    from reference_store.app.server import AppServer
+
     return AppServer(skill_module.DISTRIBUTION, skill_module.tool_version())
 
 

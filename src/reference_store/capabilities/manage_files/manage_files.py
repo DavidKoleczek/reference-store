@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from reference_store.core import disk, entries, names, new_files
+from reference_store.core.catalog import catalog
 from reference_store.core.entries import EntryRecord
 from reference_store.models import Entry, NewFile, NotGiven, ReferenceStoreError
 
@@ -20,6 +21,7 @@ def add_files(name: str, files: list[NewFile], store: str | None) -> Entry:
             with new_files.placed(folder, placings):
                 entries.write(folder, record)
             new_files.finish_moves(placings)
+    catalog.changed(target, folder.name)
     return entries.entry_of(target, folder, record)
 
 
@@ -55,6 +57,7 @@ def update_file(
         if record != before:
             record.updated = entries.in_utc(datetime.now(UTC))
             entries.write(folder, record)
+    catalog.changed(target, folder.name)
     return entries.entry_of(target, folder, record)
 
 
@@ -96,6 +99,7 @@ def rename_file(name: str, path: str, new_path: str, store: str | None) -> Entry
         _delete_emptied(folder, old)
         record.updated = entries.in_utc(datetime.now(UTC))
         entries.write(folder, record)
+    catalog.changed(target, folder.name)
     return entries.entry_of(target, folder, record)
 
 
@@ -122,6 +126,7 @@ def delete_file(name: str, path: str, store: str | None) -> Entry:
         _delete_emptied(folder, old)
         record.updated = entries.in_utc(datetime.now(UTC))
         entries.write(folder, record)
+    catalog.changed(target, folder.name)
     return entries.entry_of(target, folder, record)
 
 

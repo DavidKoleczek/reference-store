@@ -22,6 +22,8 @@ PREVIEW_STEM = ".preview"
 PREVIEW_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".bmp", ".svg")
 # What an `.entry.json` written by hand may leave out, and the library fills in the first time it reads it.
 FILLED_IN = ("id", "created", "updated")
+# A file found under an entry's folder: its path in the entry, where it is, and its size and times.
+Found = tuple[str, str, os.stat_result]
 
 
 class PreviewRecord(BaseModel):
@@ -139,18 +141,23 @@ def write(folder: Path, record: EntryRecord) -> None:
 
 def entry_of(store: Store, folder: Path, record: EntryRecord) -> Entry:
     """Returns the entry, with the files that are in its folder now."""
-    files = files_of(folder, record)
+    return entry_from(store.name, folder, record, found_in(folder))
+
+
+def entry_from(store: str, folder: Path, record: EntryRecord, found: list[Found]) -> Entry:
+    """Returns the entry in the store with that name, with the files found in its folder."""
+    files = _described(found, record)
     return Entry(
         id=record.id,
         name=folder.name,
         title=record.title,
-        store=store.name,
+        store=store,
         description=record.description,
         url=record.url,
         tags=record.tags,
         notes=record.notes,
         rating=record.rating,
-        preview=_preview(folder, record),
+        preview=_preview(found, record),
         file_count=len(files),
         size=sum(file.size for file in files),
         created=record.created,
@@ -255,34 +262,7 @@ def spelled(folder: Path, path: str) -> tuple[str, Path | None]:
 
 def files_of(folder: Path, record: EntryRecord) -> list[EntryFile]:
     """Returns every file in the entry's folder but the library's own, in the order of their paths."""
-    said = {names.key(path): about for path, about in record.files.items()}
-    files: list[EntryFile] = []
-    for root, folder_names, file_names in folder.walk():
-        folder_names[:] = [each for each in folder_names if not disk.is_temporary(each)]
-        for file_name in file_names:
-            full_path = root / file_name
-            path = full_path.relative_to(folder).as_posix()
-            if is_the_librarys(path):
-                continue
-            try:
-                info = full_path.stat()
-            except OSError:
-                continue
-            if not stat.S_ISREG(info.st_mode):
-                continue
-            about = said.get(names.key(path), FileRecord())
-            files.append(
-                EntryFile(
-                    path=path,
-                    full_path=full_path,
-                    size=info.st_size,
-                    modified=in_utc(datetime.fromtimestamp(info.st_mtime, UTC)),
-                    description=about.description,
-                    notes=about.notes,
-                    tags=about.tags,
-                )
-            )
-    return sorted(files, key=lambda file: path_order(file.path))
+    return _described(found_in(folder), record)
 
 
 def path_order(path: str) -> list[str]:
@@ -354,14 +334,67 @@ def _parsed(path: Path, data: dict[str, Any]) -> EntryRecord:
         ) from None
 
 
-def _preview(folder: Path, record: EntryRecord) -> Preview | None:
-    """Returns the entry's preview, or None when its image is no longer where `.entry.json` says."""
+def found_in(folder: Path) -> list[Found]:
+    """Returns each file under an entry's folder, the library's own included.
+
+    A folder's listing already has each file's size and times on Windows, so a file is asked for its own only
+    elsewhere. A link to a folder, or a junction, is not gone into.
+    """
+    found: list[Found] = []
+    pending = [(str(folder), "")]
+    while pending:
+        where, prefix = pending.pop()
+        try:
+            with os.scandir(where) as items:
+                for item in items:
+                    try:
+                        if item.is_dir(follow_symlinks=False) and not item.is_junction():
+                            if not disk.is_temporary(item.name):
+                                pending.append((item.path, f"{prefix}{item.name}/"))
+                            continue
+                        info = item.stat()
+                    except OSError:
+                        continue
+                    if stat.S_ISREG(info.st_mode) and not disk.is_temporary(item.name):
+                        found.append((f"{prefix}{item.name}", item.path, info))
+        except OSError:
+            continue
+    return found
+
+
+def _described(found: list[Found], record: EntryRecord) -> list[EntryFile]:
+    """Returns the files found but the library's own, each with what was said about it, in the order of their paths."""
+    said = {names.key(path): about for path, about in record.files.items()}
+    nothing = FileRecord()
+    files: list[EntryFile] = []
+    for path, full_path, info in found:
+        if "/" not in path and (names.key(path) == ENTRY_FILE or is_copied_preview(path)):
+            continue
+        about = said.get(names.key(path), nothing)
+        files.append(
+            EntryFile(
+                path=path,
+                full_path=Path(full_path),
+                size=info.st_size,
+                modified=datetime.fromtimestamp(int(info.st_mtime), UTC),
+                description=about.description,
+                notes=about.notes,
+                tags=about.tags,
+            )
+        )
+    return sorted(files, key=lambda file: path_order(file.path))
+
+
+def _preview(found: list[Found], record: EntryRecord) -> Preview | None:
+    """Returns the entry's preview, or None when its image is no longer where `.entry.json` says.
+
+    The image is looked for among the files found under the entry, so a path that leads out of the entry is never one.
+    """
     if record.preview is None:
         return None
-    path = folder / record.preview.file
-    if not path.is_file() or not path.resolve().is_relative_to(folder.resolve()):
-        return None
-    return Preview(path=path, url=record.preview.url)
+    wanted = names.key(names.slashed(record.preview.file))
+    path = next((full_path for path, full_path, _ in found if names.key(path) == wanted), None)
+    return None if path is None else Preview(path=Path(path), url=record.preview.url)
 
 
 def is_copied_preview(path: str) -> bool:

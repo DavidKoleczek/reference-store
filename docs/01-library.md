@@ -413,7 +413,7 @@ What the library keeps for itself starts with a dot, so it is easy to tell from 
 ```
 
 `.entry.json` and a copied-in preview are all the library adds to an entry's folder, and they aren't among its files. The folder can be handed to any other program as it is.
-Files you put in an entry's folder yourself are listed like any other, and renaming the folder renames the entry.
+Files you put in an entry's folder yourself are its files like any other, and renaming the folder renames the entry. [Large stores](#large-stores) says how soon listings show them.
 An `.entry.json` you write yourself only needs what you want to say, even `{}`. The library adds the `id` and the dates the first time it reads it.
 One that can't be read, such as one with a typo in its JSON, leaves its entry out of listings, and `get_entry` says what is wrong with it.
 A file you rename yourself loses what was said about it, and stops being the preview if it was. `rename_file` keeps both.
@@ -539,10 +539,28 @@ glob_files("**/*.png", file_tags=["ux"])
 ## Large stores
 
 Listing, grep, and glob return a page at a time, so a caller never has to hold a whole store.
-A page of `list_entries` or `glob_files` takes about as long in a store of ten thousand entries as in one of a hundred.
-For that, the library keeps an index of what the stores hold, in `index/` beside the [configuration](#configuration).
-The stores' files are still what counts. The index is made from them, catches up when they change, and can be deleted at any time.
-`grep_entries` over `file_contents` is the exception. It reads the files, so it takes longer the more text the stores hold.
+A page of `list_entries` or `glob_files` from a store of ten thousand entries takes a fraction of a second.
+For that, the library keeps an index of what the stores hold, in `index/` beside the [configuration](#configuration), and listing, grep, and glob read it.
+The stores' files are still what counts. The index is made from them, and can be deleted at any time.
+The first read of a store makes its part of the index, which takes a few seconds for ten thousand entries.
+
+How soon a change shows in listing, grep, and glob depends on what made it:
+
+- A change the library makes shows at once.
+- An entry added, renamed, or removed any other way, such as by hand or by a folder that syncs, shows at once too.
+- A file added to an entry, changed, or removed any other way shows after the store's daily check, and so does an `.entry.json` edited by hand. A read starts the check when the last one is a day old, and doesn't wait for it.
+- `get_entry` always reads the files, and what it finds shows from then on.
+- `rebuild_index` makes everything show right away.
+
+`grep_entries` looks at every entry, so it takes longer the more the stores hold. Over `file_contents` it reads the files too.
+
+### `rebuild_index`
+
+```python
+def rebuild_index(store: str | None = None) -> None
+```
+
+Reads a store into the index again from its files, or every store that is available. Run it after changing files in an entry by hand, to list them right away.
 
 ## Processors
 
@@ -688,7 +706,7 @@ Set `REFERENCE_STORE_HOME` to use another folder.
 
 - `config.json` has the stores, the default store, the sites, and the processors.
 - `processors/` is where processors run, and where their scripts are kept.
-- `index/` is what makes [large stores](#large-stores) quick to list.
+- `index/` is what makes [large stores](#large-stores) quick to list. Deleting it is safe, since the next read makes it again.
 - `locks/` keeps two processes from changing the same thing at once.
 - `stores/` has the clones of GitHub stores.
 

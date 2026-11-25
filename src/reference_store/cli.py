@@ -778,6 +778,21 @@ def glob_files(
 
 
 @app.command()
+def rebuild_index(
+    store: Annotated[
+        str | None, typer.Option(help="Read only this store again. Without it, every store that is available.")
+    ] = None,
+) -> None:
+    """Read the stores into the index again from their files.
+
+    The index keeps up with what the commands change. Run this after changing files in an entry by hand, to list and glob them right away.
+    """
+    with _reported():
+        lib.rebuild_index(store)
+    typer.echo("Rebuilt the index.")
+
+
+@app.command()
 def skill() -> None:
     """Print the tool's skill, which tells an agent how to use it."""
     typer.echo(lib.skill())

@@ -1,7 +1,4 @@
-"""Finding what the stores hold: entries by what they say and what their files hold, and files by their paths.
-
-Each call reads the stores' folders, so what was changed by hand shows at once.
-"""
+"""Finding what the stores hold: entries by what they say and what their files hold, and files by their paths."""
 
 import codecs
 from collections.abc import Iterator
@@ -11,11 +8,11 @@ from typing import get_args
 
 from reference_store.capabilities.search import globs
 from reference_store.core import entries, filters, names, pages
+from reference_store.core.catalog import catalog
 from reference_store.models import (
     Entry,
     EntryFile,
     FileListing,
-    FileMatch,
     GrepField,
     GrepListing,
     GrepMatch,
@@ -57,22 +54,21 @@ def grep_entries(
     paths = None if glob is None else globs.compiled(glob)
     keep = filters.filters(tags, file_tags, tag_match, min_rating, site)
     results: list[GrepResult] = []
-    for entry in entries.every_entry(store):
-        if not keep.keeps(entry):
-            continue
-        files = [
-            file
-            for file in entry.files
-            if keep.keeps_file(file) and (paths is None or globs.matches(paths, entry.name, file.path))
-        ]
-        shown: list[GrepMatch] = []
-        count = 0
-        for match in _matches(entry, files, looked_in, regex):
-            count += 1
-            if len(shown) < matches_per_entry:
-                shown.append(match)
-        if count:
-            results.append(GrepResult(entry=entries.summary_of(entry), matches=shown, match_count=count))
+    with catalog.reading() as held:
+        for entry in held.entries(keep, store):
+            files = [
+                file
+                for file in entry.files
+                if keep.keeps_file(file) and (paths is None or globs.matches(paths, entry.name, file.path))
+            ]
+            shown: list[GrepMatch] = []
+            count = 0
+            for match in _matches(entry, files, looked_in, regex):
+                count += 1
+                if len(shown) < matches_per_entry:
+                    shown.append(match)
+            if count:
+                results.append(GrepResult(entry=entries.summary_of(entry), matches=shown, match_count=count))
     page, total, next_after = pages.page(
         results,
         key=lambda result: [
@@ -102,13 +98,8 @@ def glob_files(
     """Returns a page of the files whose path, starting with their entry's name, matches `pattern`."""
     paths = globs.compiled(pattern)
     keep = filters.filters(tags, file_tags, tag_match, min_rating, site)
-    found = [
-        FileMatch.model_validate({**file.model_dump(), "entry": entry.name, "store": entry.store})
-        for entry in entries.every_entry(store)
-        if keep.keeps(entry)
-        for file in entry.files
-        if keep.keeps_file(file) and globs.matches(paths, entry.name, file.path)
-    ]
+    with catalog.reading() as held:
+        found = held.files(keep, store, lambda entry, path: globs.matches(paths, entry, path))
     shown, total, next_after = pages.page(
         found,
         # Entries that share a name in two stores keep their files apart.

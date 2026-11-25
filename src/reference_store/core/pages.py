@@ -38,7 +38,14 @@ def page[T](
     if limit < 1:
         raise ReferenceStoreError(f"limit is how many to return at once, so it has to be 1 or more, not {limit}.")
     order = functools.cmp_to_key(lambda first, second: _compare(first, second, descending))
-    ordered = sorted(((key(item), item) for item in items), key=lambda pair: order(pair[0]))
+    ordered = [(key(item), item) for item in items]
+    # One sort for each value, from the last to the first, orders the items as `_compare` does, since a sort keeps
+    # the order of items that are equal. It is much quicker than a sort that calls `_compare` for every pair.
+    try:
+        for place in reversed(range(len(descending))):
+            ordered.sort(key=lambda pair: pair[0][place], reverse=descending[place])
+    except TypeError:
+        ordered.sort(key=lambda pair: order(pair[0]))
     start = 0
     if after is not None:
         last = _decoded(after, made_for)

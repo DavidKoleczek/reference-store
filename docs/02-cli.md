@@ -195,6 +195,14 @@ game-1/screenshots/menu.png  main  1.2 MB  [ux]  The pause menu.
 1 of 1 file.
 ```
 
+## Index
+
+```
+reference-store rebuild-index [--store <store>]
+```
+
+Says the index was rebuilt, and takes no `--json`. [Large stores](01-library.md#large-stores) says when it is needed.
+
 ## App
 
 ```
