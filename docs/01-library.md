@@ -488,10 +488,10 @@ class GrepListing(BaseModel):
     after: str | None  # None on the last page
 ```
 
-Returns each entry that matches a regular expression, with its first matches. An entry with a long saved page counts once, however many of its lines match.
+Returns each entry that matches a regular expression, with its first matches, sorted by name as `list_entries` does. An entry with a long saved page counts once, however many of its lines match.
 
-- `fields`: what it looks in. By default, everything. `file_contents` reads text files only.
-- `glob`: keeps it to the files whose paths match, as in `glob_files`.
+- `fields`: what it looks in. By default, everything. Text is matched a line at a time, and `file_contents` reads the files that are UTF-8 text. A long line is cut to the part around its match.
+- `glob`: keeps the fields about files to the files whose paths match, as in `glob_files`. `file_tags` does the same with the files that have them.
 - `matches_per_entry`: how many matches each result holds. `match_count` counts them all.
 - `limit`: counts entries, not matches.
 
@@ -526,9 +526,9 @@ class FileListing(BaseModel):
     after: str | None  # None on the last page
 ```
 
-Returns the files whose path matches a pattern, in the order of their paths.
+Returns the files whose path matches a pattern, entry by entry, in the order of their paths.
 
-- `pattern`: matched against the file's path starting with the entry's name, so `game-1/**/*.png` is every PNG in one entry and `**/*.md` every Markdown file in all of them.
+- `pattern`: a glob, where `*` matches within a name and `**` any number of folders. It is matched against the file's path starting with the entry's name, whatever the case, so `game-1/**/*.png` is every PNG in one entry and `**/*.md` every Markdown file in all of them.
 - `file_tags`: keeps the files that have every tag, or one of them with `tag_match="any"`. The other filters are about the files' entries.
 
 ```python

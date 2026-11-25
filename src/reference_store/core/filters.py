@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from reference_store.core import entries, names, sites
 from reference_store.core.sites import SiteFilter
-from reference_store.models import Entry, ReferenceStoreError, TagMatch
+from reference_store.models import Entry, EntryFile, ReferenceStoreError, TagMatch
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,11 @@ class Filters:
             return False
         if self.tags and not self.has_tags(entry.tags, self.tags):
             return False
-        return not self.file_tags or any(self.has_tags(file.tags, self.file_tags) for file in entry.files)
+        return any(self.keeps_file(file) for file in entry.files) if self.file_tags else True
+
+    def keeps_file(self, file: EntryFile) -> bool:
+        """Returns whether a file has the file tags, which every file does when there are none."""
+        return not self.file_tags or self.has_tags(file.tags, self.file_tags)
 
     def has_tags(self, tags: list[str], wanted: list[str]) -> bool:
         """Returns whether the tags hold every one wanted, or one of them when `tag_match` is `any`."""

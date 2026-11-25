@@ -132,6 +132,61 @@ class SiteCount(BaseModel):
     groups: list[GroupCount]
 
 
+GrepField = Literal[
+    "name",
+    "title",
+    "description",
+    "url",
+    "tags",
+    "notes",
+    "file_descriptions",
+    "file_notes",
+    "file_tags",
+    "file_contents",
+]
+
+
+class GrepMatch(BaseModel):
+    """A line or a value that matched."""
+
+    field: GrepField
+    path: str | None  # the file, for the fields about files
+    full_path: Path | None  # the same file on this machine
+    line: int | None  # for file_contents, counting from 1
+    text: str  # the line or value that matched
+
+
+class GrepResult(BaseModel):
+    """An entry that matched, and its first matches."""
+
+    entry: EntrySummary
+    matches: list[GrepMatch]  # the first matches_per_entry of them
+    match_count: int
+
+
+class GrepListing(BaseModel):
+    """A page of entries that matched."""
+
+    results: list[GrepResult]
+    total: int
+    after: str | None  # None on the last page
+
+
+class FileMatch(EntryFile):
+    """A file whose path matched, and its entry."""
+
+    entry: str
+    store: str
+
+
+class FileListing(BaseModel):
+    """A page of files."""
+
+    files: list[FileMatch]
+    total: int
+    after: str | None  # None on the last page
+
+
 class App(BaseModel):
     """The app while it is being served."""
 

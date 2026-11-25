@@ -163,6 +163,38 @@ files: 4, 2.1 MB
   screenshots/menu.png  1.2 MB  [ux]  The pause menu.
 ```
 
+## Search
+
+```
+reference-store grep-entries <pattern> [--field <field>]... [--glob <pattern>] [--ignore-case] [--tag <tag>]...
+    [--file-tag <tag>]... [--any] [--min-rating <1-5>] [--site <site>] [--store <store>] [--matches-per-entry <n>]
+    [--limit <n>] [--after <after>]
+reference-store glob-files <pattern> [--file-tag <tag>]... [--tag <tag>]... [--any] [--min-rating <1-5>]
+    [--site <site>] [--store <store>] [--limit <n>] [--after <after>]
+```
+
+- `fields`: repeat `--field` for each one.
+- Quote a pattern so the shell leaves it alone. The CLI never expands wildcards itself, on Windows either.
+
+`grep-entries` prints a line for each entry with its store and how many matches it has, then a line for each match it holds, as grep would. A match in a file's contents starts with the file and the line number.
+
+```console
+$ reference-store grep-entries "assist mode" --ignore-case
+game-1 (Game 1: The First One)  main  3 matches
+  description: Has an assist mode.
+  screenshots/menu.png file_descriptions: The pause menu, with assist mode.
+  walkthrough.md:12: Turn on assist mode for the last level.
+1 of 1 entry.
+```
+
+`glob-files` prints a line for each file: its path starting with its entry's name, its store, its size, its tags, and its description.
+
+```console
+$ reference-store glob-files "**/*.png" --file-tag ux
+game-1/screenshots/menu.png  main  1.2 MB  [ux]  The pause menu.
+1 of 1 file.
+```
+
 ## App
 
 ```

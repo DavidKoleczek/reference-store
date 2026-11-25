@@ -5,7 +5,7 @@ Each call reads the stores' folders, so what was changed by hand shows at once.
 
 from typing import get_args
 
-from reference_store.core import entries, filters, names, pages, sites, stores
+from reference_store.core import entries, filters, names, pages, sites
 from reference_store.core.pages import Key
 from reference_store.models import (
     Entry,
@@ -40,7 +40,7 @@ def list_entries(
         raise ReferenceStoreError(f"There is no sort {sort}. It is one of: {', '.join(SORTS)}.")
     keep = filters.filters(tags, file_tags, tag_match, min_rating, site)
     downward = sort in LARGEST_FIRST if descending is None else descending
-    found = [entry for entry in _every_entry(store) if keep.keeps(entry)]
+    found = [entry for entry in entries.every_entry(store) if keep.keeps(entry)]
     shown, total, next_after = pages.page(
         found,
         key=lambda entry: _sort_key(entry, sort),
@@ -59,7 +59,7 @@ def list_tags(store: str | None) -> list[TagCount]:
     Tags that differ only by case are one, spelled as it is first found.
     """
     counts: dict[str, TagCount] = {}
-    for entry in _every_entry(store):
+    for entry in entries.every_entry(store):
         for tag in entry.tags:
             _counted(counts, tag).entries += 1
         for file in entry.files:
@@ -76,7 +76,7 @@ def list_sites(store: str | None) -> list[SiteCount]:
     known = sites.in_use()
     counts: dict[str, SiteCount] = {}
     groups: dict[str, dict[str, GroupCount]] = {}
-    for entry in _every_entry(store):
+    for entry in entries.every_entry(store):
         source = None if entry.url is None else known.source_of(entry.url)
         if source is None:
             continue
@@ -90,10 +90,6 @@ def list_sites(store: str | None) -> list[SiteCount]:
             groups.get(site.site, {}).values(), key=lambda count: (-count.entries, names.key(count.group))
         )
     return sorted(counts.values(), key=lambda count: (-count.entries, count.site))
-
-
-def _every_entry(store: str | None) -> list[Entry]:
-    return [entry for each in stores.searched(store) for entry in entries.entries_in(each)]
 
 
 def _sort_key(entry: Entry, sort: EntrySort) -> Key:

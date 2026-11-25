@@ -100,6 +100,15 @@ def entries_in(store: Store) -> Iterator[Entry]:
         yield entry_of(store, folder, record)
 
 
+def every_entry(store: str | None) -> list[Entry]:
+    """Returns the entries in the store named, or in every store, a store at a time in priority order.
+
+    Raises:
+        ReferenceStoreError: The store named can't be used.
+    """
+    return [entry for each in stores.searched(store) for entry in entries_in(each)]
+
+
 def read(folder: Path) -> EntryRecord:
     """Returns what an entry's `.entry.json` says, first filling in and saving what the library keeps for every entry
     when it was written without it.

@@ -17,6 +17,9 @@ from reference_store.models import (
     Entry,
     EntrySort,
     EntrySummary,
+    FileMatch,
+    GrepMatch,
+    GrepResult,
     NewFile,
     NewPreview,
     ReferenceStoreError,
@@ -42,6 +45,21 @@ class Clearable(StrEnum):
     NOTES = "notes"
     RATING = "rating"
     PREVIEW = "preview"
+
+
+class Field(StrEnum):
+    """The fields `grep-entries --field` looks in."""
+
+    NAME = "name"
+    TITLE = "title"
+    DESCRIPTION = "description"
+    URL = "url"
+    TAGS = "tags"
+    NOTES = "notes"
+    FILE_DESCRIPTIONS = "file_descriptions"
+    FILE_NOTES = "file_notes"
+    FILE_TAGS = "file_tags"
+    FILE_CONTENTS = "file_contents"
 
 
 class FileClearable(StrEnum):
@@ -159,6 +177,33 @@ def _describe_summary(entry: EntrySummary, sort: EntrySort) -> str:
         facts.append(f"[{', '.join(entry.tags)}]")
     title = f" ({entry.title})" if entry.title else ""
     return "  ".join([f"{entry.name}{title}", *facts])
+
+
+def _describe_file(file: FileMatch) -> str:
+    """The file as one line: its path starting with its entry's name, its store, its size, its tags, and what it is."""
+    tags = f"  [{', '.join(file.tags)}]" if file.tags else ""
+    description = f"  {file.description}" if file.description else ""
+    return f"{file.entry}/{file.path}  {file.store}  {_size(file.size)}{tags}{description}"
+
+
+def _describe_result(result: GrepResult) -> list[str]:
+    """The entry as a line, as list-entries has it but shorter, then a line for each match it holds."""
+    entry = result.entry
+    title = f" ({entry.title})" if entry.title else ""
+    lines = [f"{entry.name}{title}  {entry.store}  {_counted(result.match_count, 'match', 'matches')}"]
+    lines.extend(f"  {_describe_match(match)}" for match in result.matches)
+    if result.match_count > len(result.matches):
+        lines.append(f"  and {result.match_count - len(result.matches)} more")
+    return lines
+
+
+def _describe_match(match: GrepMatch) -> str:
+    """The match as grep would show it: where it is, then the line or the value."""
+    if match.line is not None:
+        return f"{match.path}:{match.line}: {match.text}"
+    if match.path is not None:
+        return f"{match.path} {match.field}: {match.text}"
+    return f"{match.field}: {match.text}"
 
 
 def _print_version(value: bool) -> None:
@@ -617,6 +662,122 @@ def delete_file(
 
 
 @app.command()
+def grep_entries(
+    pattern: Annotated[str, typer.Argument(help="A regular expression, such as 'assist mode' or 'level-[0-9]+'.")],
+    field: Annotated[
+        list[Field] | None,
+        typer.Option(help="A field to look in. Repeat it for each one. Without it, every field.", show_default=False),
+    ] = None,
+    glob: Annotated[
+        str | None,
+        typer.Option(help="Look only in the files whose paths match this, as in glob-files, such as **/*.md."),
+    ] = None,
+    ignore_case: Annotated[bool, typer.Option("--ignore-case", help="Match whatever the case.")] = False,
+    tag: Annotated[
+        list[str] | None, typer.Option(help="Keep entries with this tag. Repeat it for each one, and they need all.")
+    ] = None,
+    file_tag: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Keep entries with a file that has this tag, and look only in those files. Repeat it for each one."
+        ),
+    ] = None,
+    any_: Annotated[
+        bool, typer.Option("--any", help="One of the tags is enough, and one of the file tags on a file.")
+    ] = False,
+    min_rating: Annotated[int | None, typer.Option(help="Keep entries rated this or better, from 1 to 5.")] = None,
+    site: Annotated[
+        str | None,
+        typer.Option(help="Keep entries that link to a site, such as github.com, or to a group on it."),
+    ] = None,
+    store: Annotated[str | None, typer.Option(help="Look only in this store. Without it, every store.")] = None,
+    matches_per_entry: Annotated[int, typer.Option(help="How many matches to show for each entry.")] = 5,
+    limit: Annotated[int, typer.Option(help="How many entries to list at once.")] = 100,
+    after: Annotated[str | None, typer.Option(help="Carry on from the page that printed this.")] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """Find the entries with a line or a value that matches a regular expression, sorted by name.
+
+    file_contents reads the files that are UTF-8 text, and shows the line number of each match.
+    """
+    with _reported():
+        listing = lib.grep_entries(
+            pattern,
+            [each.value for each in field] if field else None,
+            glob,
+            ignore_case,
+            tag,
+            file_tag,
+            "any" if any_ else "all",
+            min_rating,
+            site,
+            store,
+            matches_per_entry,
+            limit,
+            after,
+        )
+    if json:
+        typer.echo(listing.model_dump_json(indent=2))
+        return
+    if not listing.total:
+        typer.echo("No entry matches.")
+        return
+    for result in listing.results:
+        typer.echo("\n".join(_describe_result(result)))
+    shown = f"{len(listing.results)} of {_counted(listing.total, 'entry', 'entries')}."
+    typer.echo(f"{shown} For the next page: --after {listing.after}" if listing.after else shown)
+
+
+@app.command()
+def glob_files(
+    pattern: Annotated[
+        str,
+        typer.Argument(help="A glob pattern for a file's path starting with its entry's name, such as **/*.md."),
+    ],
+    file_tag: Annotated[
+        list[str] | None,
+        typer.Option(help="Keep files with this tag. Repeat it for each one, and they need all."),
+    ] = None,
+    tag: Annotated[
+        list[str] | None,
+        typer.Option(help="Keep files whose entry has this tag. Repeat it for each one, and they need all."),
+    ] = None,
+    any_: Annotated[
+        bool, typer.Option("--any", help="One of the tags is enough, and one of the file tags on a file.")
+    ] = False,
+    min_rating: Annotated[
+        int | None, typer.Option(help="Keep files whose entry is rated this or better, from 1 to 5.")
+    ] = None,
+    site: Annotated[
+        str | None,
+        typer.Option(help="Keep files whose entry links to a site, such as github.com, or to a group on it."),
+    ] = None,
+    store: Annotated[str | None, typer.Option(help="Look only in this store. Without it, every store.")] = None,
+    limit: Annotated[int, typer.Option(help="How many to list at once.")] = 100,
+    after: Annotated[str | None, typer.Option(help="Carry on from the page that printed this.")] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """List the files whose path matches a glob pattern, in the order of their paths.
+
+    * matches within a name, ** any number of folders, and the case doesn't matter. Quote the pattern, so the shell leaves it alone.
+    """
+    with _reported():
+        listing = lib.glob_files(
+            pattern, file_tag, tag, "any" if any_ else "all", min_rating, site, store, limit, after
+        )
+    if json:
+        typer.echo(listing.model_dump_json(indent=2))
+        return
+    if not listing.total:
+        typer.echo("No file matches.")
+        return
+    for file in listing.files:
+        typer.echo(_describe_file(file))
+    shown = f"{len(listing.files)} of {_counted(listing.total, 'file', 'files')}."
+    typer.echo(f"{shown} For the next page: --after {listing.after}" if listing.after else shown)
+
+
+@app.command()
 def skill() -> None:
     """Print the tool's skill, which tells an agent how to use it."""
     typer.echo(lib.skill())
@@ -641,4 +802,5 @@ def app_(
 
 def main() -> None:
     """Runs the command line."""
-    app()
+    # Click expands wildcards in arguments on Windows, which would turn a glob pattern into the files it matches here.
+    app(windows_expand_args=False)

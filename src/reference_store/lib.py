@@ -7,12 +7,16 @@ from reference_store.capabilities.listing import listing
 from reference_store.capabilities.manage_entries import manage_entries, relocate
 from reference_store.capabilities.manage_files import manage_files
 from reference_store.capabilities.manage_stores import manage_stores
+from reference_store.capabilities.search import search
 from reference_store.core import stores
 from reference_store.models import (
     NOT_GIVEN,
     Entry,
     EntryListing,
     EntrySort,
+    FileListing,
+    GrepField,
+    GrepListing,
     NewFile,
     NewPreview,
     NotGiven,
@@ -295,6 +299,78 @@ def delete_file(name: str, path: str, store: str | None = None) -> Entry:
             that keeps it from being deleted, in which case nothing is.
     """
     return manage_files.delete_file(name, path, store)
+
+
+def grep_entries(
+    pattern: str,
+    fields: list[GrepField] | None = None,
+    glob: str | None = None,
+    ignore_case: bool = False,
+    tags: list[str] | None = None,
+    file_tags: list[str] | None = None,
+    tag_match: TagMatch = "all",
+    min_rating: int | None = None,
+    site: str | None = None,
+    store: str | None = None,
+    matches_per_entry: int = 5,
+    limit: int = 100,
+    after: str | None = None,
+) -> GrepListing:
+    """Returns a page of the entries that match a regular expression, each with its first matches, sorted by name.
+
+    It looks in every field, or those in `fields`, a value or a line at a time. `file_contents` reads the files that
+    are UTF-8 text, and gives the line numbers of its matches. A long line is cut to the part around its match.
+
+    The filters are those of `list_entries`. `glob` keeps the fields about files to the files whose paths match it, as
+    in `glob_files`, and `file_tags` keeps them to the files with those tags.
+
+    `matches_per_entry` is how many matches each result holds, and `match_count` counts them all. `limit` counts
+    entries, not matches. Pass the page's `after` to get the next one.
+
+    Raises:
+        ReferenceStoreError: The pattern isn't a regular expression, a field isn't one, a filter can't be one, or the
+            store named can't be used.
+    """
+    return search.grep_entries(
+        pattern,
+        fields,
+        glob,
+        ignore_case,
+        tags,
+        file_tags,
+        tag_match,
+        min_rating,
+        site,
+        store,
+        matches_per_entry,
+        limit,
+        after,
+    )
+
+
+def glob_files(
+    pattern: str,
+    file_tags: list[str] | None = None,
+    tags: list[str] | None = None,
+    tag_match: TagMatch = "all",
+    min_rating: int | None = None,
+    site: str | None = None,
+    store: str | None = None,
+    limit: int = 100,
+    after: str | None = None,
+) -> FileListing:
+    """Returns a page of the files whose path matches a glob pattern, in the order of their paths.
+
+    The pattern is matched against a file's path starting with its entry's name, whatever the case, so
+    `game-1/**/*.png` is every PNG in one entry, and `**/*.md` every Markdown file in all of them.
+
+    `file_tags` keeps the files that have every one, or one of them with `tag_match="any"`. The other filters are about
+    the files' entries, as in `list_entries`. Pass the page's `after` to get the next one.
+
+    Raises:
+        ReferenceStoreError: The pattern is empty, a filter can't be one, or the store named can't be used.
+    """
+    return search.glob_files(pattern, file_tags, tags, tag_match, min_rating, site, store, limit, after)
 
 
 def app_server() -> AppServer:
