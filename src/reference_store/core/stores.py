@@ -28,7 +28,7 @@ def add_store(name: str, location: str, default: bool = False) -> Store:
                 raise ReferenceStoreError(f"There is already a store named {record.name}. Pick another name.")
             if _same_path(Path(record.location), path):
                 raise ReferenceStoreError(f"{path} is already registered, as the store {record.name}.")
-        _make_store(path)
+        make_store(path)
         record = StoreRecord(
             name=name,
             location=path.as_posix(),
@@ -95,6 +95,22 @@ def remove_store(name: str) -> None:
             current.default_store = current.stores[0].name if current.stores else None
 
 
+def find_store(name: str) -> Store:
+    """Returns the store with that name, the project's own included.
+
+    Raises:
+        ReferenceStoreError: There is no such store, or it is not available.
+    """
+    listed = list_stores()
+    store = next((each for each in listed if names.key(each.name) == names.key(name)), None)
+    if store is None:
+        known = ", ".join(each.name for each in listed) or "none"
+        raise ReferenceStoreError(f"There is no store named {name}. The stores are: {known}.")
+    if not store.available:
+        raise ReferenceStoreError(f"The store {store.name} is not available, since {store.path} can't be reached.")
+    return store
+
+
 def project_folder() -> Path | None:
     """Returns the `.reference-store` folder of the project the current directory is in, if it is in one."""
     here = Path.cwd()
@@ -112,7 +128,8 @@ def _folder_of(location: Path) -> Path:
     return path
 
 
-def _make_store(path: Path) -> None:
+def make_store(path: Path) -> None:
+    """Makes a folder a store, unless it is one already. The folder is made when it is missing."""
     if path.exists() and not path.is_dir():
         raise ReferenceStoreError(f"{path} is a file, and a store has to be a folder.")
     marker = path / STORE_FILE

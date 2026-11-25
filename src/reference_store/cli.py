@@ -2,6 +2,8 @@
 
 from collections.abc import Generator
 import contextlib
+from datetime import datetime
+from pathlib import Path
 import time
 from typing import Annotated
 
@@ -9,11 +11,12 @@ from pydantic import TypeAdapter
 import typer
 
 from reference_store import lib
-from reference_store.models import ReferenceStoreError, Store
+from reference_store.models import Entry, NewPreview, ReferenceStoreError, Store
 from reference_store.skill.skill import DISTRIBUTION
 
 JSON_HELP = "Print the result as JSON."
 STORES = TypeAdapter(list[Store])
+SIZE_UNITS = ("bytes", "KB", "MB", "GB", "TB")
 
 app = typer.Typer(
     name=DISTRIBUTION,
@@ -55,6 +58,53 @@ def _print_stores(stores: list[Store], json: bool) -> None:
             typer.echo(_describe_store(store))
     else:
         typer.echo("No stores are registered. Add one with add-store.")
+
+
+def _moment(text: str | None, option: str) -> datetime | None:
+    if text is None:
+        return None
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        raise typer.BadParameter(
+            f"{text!r} isn't a date or a time, such as 2026-01-05 or 2026-01-05T18:30:00Z.", param_hint=option
+        ) from None
+
+
+def _size(count: int) -> str:
+    value, unit = float(count), 0
+    while value >= 1024 and unit < len(SIZE_UNITS) - 1:
+        value /= 1024
+        unit += 1
+    if unit == 0:
+        return f"{count} byte" if count == 1 else f"{count} bytes"
+    return f"{value:.1f} {SIZE_UNITS[unit]}" if value < 10 else f"{value:.0f} {SIZE_UNITS[unit]}"
+
+
+def _describe_entry(entry: Entry) -> str:
+    """The entry as a line for each field that has something in it, then a line for each file."""
+    fields = [
+        ("name", entry.name),
+        ("title", entry.title),
+        ("store", entry.store),
+        ("folder", str(entry.folder)),
+        ("description", entry.description),
+        ("url", entry.url),
+        ("tags", ", ".join(entry.tags)),
+        ("notes", entry.notes),
+        ("rating", None if entry.rating is None else str(entry.rating)),
+        ("preview", str(entry.preview.path) if entry.preview else None),
+        ("created", f"{entry.created.astimezone():%Y-%m-%d %H:%M}"),
+        ("updated", f"{entry.updated.astimezone():%Y-%m-%d %H:%M}"),
+        ("files", f"{entry.file_count}, {_size(entry.size)}" if entry.files else "none"),
+    ]
+    # Lines after the first of a value are indented, so a field written over several lines still reads as one.
+    lines = [f"{field}: {value.replace('\n', '\n  ')}" for field, value in fields if value]
+    for file in entry.files:
+        tags = f"  [{', '.join(file.tags)}]" if file.tags else ""
+        description = f"  {file.description}" if file.description else ""
+        lines.append(f"  {file.path}  {_size(file.size)}{tags}{description}")
+    return "\n".join(lines)
 
 
 def _print_version(value: bool) -> None:
@@ -136,6 +186,52 @@ def remove_store(name: Annotated[str, typer.Argument(help="The store's name.")])
     with _reported():
         lib.remove_store(name)
     typer.echo(f"Removed the store {name}. Its files are left as they are.")
+
+
+@app.command()
+def add_entry(
+    name: Annotated[str, typer.Argument(help="The entry's name, which is also its folder's name.")],
+    title: Annotated[str | None, typer.Option(help="A title the name can't be, such as one with a colon.")] = None,
+    description: Annotated[str, typer.Option(help="What the reference is.")] = "",
+    url: Annotated[str | None, typer.Option(help="The reference's link.")] = None,
+    tag: Annotated[list[str] | None, typer.Option(help="A tag. Repeat it for each one.")] = None,
+    notes: Annotated[str, typer.Option(help="Anything else, such as why it was saved.")] = "",
+    rating: Annotated[int | None, typer.Option(help="From 1 to 5, where 5 is the best.")] = None,
+    preview: Annotated[Path | None, typer.Option(help="An image to copy in as the entry's preview.")] = None,
+    preview_url: Annotated[str | None, typer.Option(help="Where the preview image came from.")] = None,
+    created: Annotated[
+        str | None, typer.Option(help="When it was first saved, such as 2026-01-05 or 2026-01-05T18:30:00Z.")
+    ] = None,
+    store: Annotated[
+        str | None, typer.Option(help="The store to add it to. Without it, the project's store or the default.")
+    ] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """Add an entry: one reference, such as a repo, a website, or a game with its screenshots.
+
+    It only saves what it is given, and never fetches anything.
+    """
+    new_preview = NewPreview(source=preview, url=preview_url) if preview or preview_url else None
+    with _reported():
+        entry = lib.add_entry(
+            name, title, description, url, tag, notes, rating, new_preview, _moment(created, "--created"), store
+        )
+    typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
+
+
+@app.command()
+def get_entry(
+    name: Annotated[str, typer.Argument(help="The entry's name.")],
+    store: Annotated[
+        str | None,
+        typer.Option(help="The store it is in. Without it, the store with the highest priority that has it."),
+    ] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """Show an entry and its files, including files put in its folder by hand."""
+    with _reported():
+        entry = lib.get_entry(name, store)
+    typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
 
 
 @app.command()

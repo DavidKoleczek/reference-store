@@ -1,5 +1,7 @@
 """The rules for names. Windows is the strictest about files, so its rules apply on every system."""
 
+from pathlib import Path
+
 from reference_store.models import ReferenceStoreError
 
 FORBIDDEN = '\\/:*?"<>|'
@@ -16,6 +18,8 @@ RESERVED = frozenset(
     }
 )
 NAME_LIMIT = 64
+# Windows' MAX_PATH is 260, and that counts the null that ends the path.
+FULL_PATH_LIMIT = 259
 
 
 def key(name: str) -> str:
@@ -52,3 +56,18 @@ def _problem(name: str) -> str | None:
     if len(name) > NAME_LIMIT:
         return f"it is {len(name)} characters, and a name is at most {NAME_LIMIT}"
     return None
+
+
+def check_full_path(path: Path, shorten: str) -> None:
+    """Raises when most Windows programs couldn't open `path`, saying how much shorter `shorten` has to be.
+
+    Raises:
+        ReferenceStoreError: The path is too long.
+    """
+    length = len(str(path))
+    if length > FULL_PATH_LIMIT:
+        raise ReferenceStoreError(
+            f"That would make {path}, which is {length} characters, and most Windows programs can't open a path of "
+            f"more than {FULL_PATH_LIMIT}. Make {shorten} {length - FULL_PATH_LIMIT} characters shorter, or keep the "
+            "store in a folder with a shorter path."
+        )

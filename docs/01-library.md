@@ -170,9 +170,9 @@ class OwnerCount(BaseModel):
 - `description` says what the reference is. `notes` is free text for anything else, such as why it was saved.
 - A tag is any short text, such as `ux` or `Concept Art`. Tags that differ only by case are the same tag.
 - `rating` goes from 1 to 5, and 5 is the best.
-- `preview` is one image that stands for the entry, such as a screenshot of the page or an image found on it. A `source` is copied into the entry. A `file` is one of the entry's own files, and is used where it is. Its `url` is the link to the image itself, when it came from the web.
+- `preview` is an image that lets you see what the entry is about. It can be not set, providing a `source` path will copy the image into the entry, or providing a `file` path will use one of the entry's files. `url` can be used to set the source of the preview image. The image can be a PNG, JPEG, WebP, GIF, AVIF, BMP, or SVG.
 - `add_entry` only saves what it is given. It never fetches anything. `files` are copied in as `add_files` does.
-- `created` is when the entry is added. Pass it to keep the date of a reference that was saved somewhere else before.
+- `created` is when the entry is added. Pass it to keep the date of a reference that was saved somewhere else before. Times are kept in UTC, and one with no time zone is taken as local time.
 - `list_entries` returns entries that have every tag in `tags`, and with `file_tags`, a file that has every one of those. With `tag_match="any"`, one of the tags is enough.
 - `site` keeps the entries whose `url` is on a site, such as `github.com`, or is one owner's on it, such as `github.com/octocat`.
 - `sort` orders them by name, by when they were added or last changed, by rating, by the size of their files, by how many they have, by their tags, or by their store. Names, tags, and stores go from A. The title counts as the name when there is one, and an entry's tags are read as one line of text. The rest start with the newest, the best, or the largest. `descending` turns either around.
@@ -242,8 +242,7 @@ A store is plain files:
   .store.json
   game-1/
     .entry.json
-    .preview/
-      preview.png
+    .preview.png
     trailer.mp4
     screenshots/
       menu.png
@@ -254,7 +253,7 @@ A store is plain files:
 What the library keeps for itself starts with a dot, so it is easy to tell from the references and easy for other programs to skip.
 
 - `.store.json` marks the folder as a store. A folder in it is an entry when it has an `.entry.json`.
-- `.preview` holds the entry's preview, unless that is one of the entry's own files.
+- `.preview.png`, or `.preview` with another image's extension, is the preview copied in from a `source`. An entry whose preview is one of its own files has none.
 - `.entry.json` has everything about the entry but its name, and what was said about its files:
 
 ```json
@@ -267,7 +266,7 @@ What the library keeps for itself starts with a dot, so it is easy to tell from 
   "notes": "Good menus, and a clear tutorial.",
   "rating": 4,
   "preview": {
-    "file": ".preview/preview.png",
+    "file": ".preview.png",
     "url": "https://example.com/game-1/cover.png"
   },
   "created": "2026-01-05T18:30:00Z",
@@ -287,8 +286,9 @@ What the library keeps for itself starts with a dot, so it is easy to tell from 
 }
 ```
 
-`.entry.json` and `.preview` are all the library adds to an entry's folder, and they are not among the entry's files. The folder can be handed to any other program as it is.
+`.entry.json` and the copied-in preview are all the library adds to an entry's folder, and they are not among the entry's files. `preview.file` in `.entry.json` is the path of whichever file is the preview. The folder can be handed to any other program as it is.
 Files you put in an entry's folder yourself are listed like any other, and renaming the folder renames the entry.
+An `.entry.json` you write yourself only needs what you want to say, even `{}`. The library adds the `id` and the dates the first time it reads it.
 A file you rename yourself loses what was said about it, and stops being the preview if it was. `rename_file` keeps both.
 
 ## Names and paths
@@ -300,7 +300,7 @@ Windows is the strictest about files, so its rules apply on every system. A stor
 - Names and paths that differ only by case count as the same.
 - A name is at most 64 characters, and a file's path inside its entry at most 150.
 - Paths inside an entry are written with `/` on every system.
-- Most Windows programs can't open a path longer than 260 characters. A call that would make a longer one on the machine is refused, with an error that says what to shorten. Keeping a store in a folder with a short path leaves the most room.
+- Most Windows programs can't open a path longer than 259 characters. A call that would make a longer one on the machine is refused, with an error that says what to shorten. Keeping a store in a folder with a short path leaves the most room.
 
 ## Search
 

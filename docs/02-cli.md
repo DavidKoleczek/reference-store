@@ -50,6 +50,40 @@ $ reference-store list-stores
 
 `add-store` and `set-default-store` print the store. `list-stores` and `set-store-priority` print every store. `remove-store` says the store was removed, and takes no `--json`.
 
+## Entries
+
+```
+reference-store add-entry <name> [--title <text>] [--description <text>] [--url <url>] [--tag <tag>]...
+    [--notes <text>] [--rating <1-5>] [--preview <image>] [--preview-url <url>] [--created <time>] [--store <store>]
+reference-store get-entry <name> [--store <store>]
+```
+
+- `tags`: repeat `--tag` for each one.
+- `preview`: `--preview` is the image to copy in, and `--preview-url` is where it came from.
+- `created`: a date or a time, such as `2026-01-05` or `2026-01-05T18:30:00Z`.
+
+Both print the entry: a line for each field that has something in it, then a line for each file with its size, its tags, and its description.
+
+```console
+$ reference-store get-entry game-1
+name: game-1
+title: Game 1: The First One
+store: main
+folder: D:\references\game-1
+description: A co-op puzzle game.
+url: https://example.com/game-1
+tags: game, puzzle
+rating: 4
+preview: D:\references\game-1\.preview.png
+created: 2026-01-05 13:30
+updated: 2026-01-09 04:12
+files: 2, 1.3 MB
+  screenshots/menu.png  1.2 MB  [ux]  The pause menu.
+  walkthrough.md  12 KB
+```
+
+Times are local. With `--json`, they are in UTC, and each file also has its notes and when it was modified.
+
 ## App
 
 ```
