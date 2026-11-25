@@ -232,6 +232,15 @@ wheels = [
 ]
 
 [[package]]
+name = "filelock"
+version = "4.2.12"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/aa/8ccff8da9a27e089727fcffd3c5b61708383217e47eb1e1b8af37b1dd166/filelock-4.2.12.tar.gz", hash = "sha256:7e7da24d3ac39268b0f156e56870001de44886318f092f9d851e692f7114d6dd", size = 680837, upload-time = "2026-11-18T01:20:03.951Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/c9/eb6b6528c7edb958d4c24ac47a8b94113d9de36e4cfc6eecd599b1a4f349/filelock-4.2.12-py3-none-any.whl", hash = "sha256:21decfec02f116ed4c954433cdb31f28c3b346b784543177b6d7059da2702ee9", size = 222442, upload-time = "2026-11-18T01:20:02.439Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -622,6 +631,7 @@ source = { editable = "." }
 default-groups = "all"
 dependencies = [
     { name = "fastapi" },
+    { name = "filelock" },
     { name = "mcp" },
     { name = "pydantic" },
     { name = "typer" },
@@ -640,6 +650,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0,<0.166.0" },
+    { name = "filelock", specifier = ">=4.0.0,<5.0.0" },
     { name = "mcp", specifier = ">=2.0.0,<3.0.0" },
     { name = "pydantic", specifier = ">=2.12.0,<3.0.0" },
     { name = "typer", specifier = ">=0.16.0,<0.30.0" },

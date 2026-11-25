@@ -27,9 +27,9 @@ class Store(BaseModel):
     available: bool  # False when it can't be reached, such as a NAS that is offline
 ```
 
-- `add_store` registers a store. `location` is a directory path or a GitHub repository URL. An empty or missing directory becomes a new store, and one that already holds a store is connected as it is. A directory with other things in it becomes a store too, and they are left alone. The first store added is the default. A new store gets the lowest priority.
+- `add_store` registers a store. `location` is a directory path or a GitHub repository URL. An empty or missing directory becomes a new store, and one that already holds a store is connected as it is. A directory with other things in it becomes a store too, and they are left alone. A project's folder, one with a `.reference-store` in it, registers that store. The first store added is the default. A new store gets the lowest priority.
 - `set_store_priority` gives a store that place, and the others shift to make room. No two stores share a `priority_order`.
-- `remove_store` only unregisters it. Nothing in the store is deleted.
+- `remove_store` only unregisters it. Nothing in the store is deleted. When it was the default, the store with the highest priority left becomes the default.
 
 A GitHub store is kept as a clone on the machine, so its files have real paths like any other store's.
 GitHub refuses files over 100 MB, so adding or moving one into a GitHub store is refused with an error that names the file. Put it in a directory store instead.
@@ -295,7 +295,8 @@ A file you rename yourself loses what was said about it, and stops being the pre
 
 Windows is the strictest about files, so its rules apply on every system. A store made on one works on the others.
 
-- An entry's name, and each part of a file's path, can't contain `\ / : * ? " < > |`, end in a dot or a space, or be a name Windows keeps for itself, such as `CON` or `NUL`.
+- A store's or an entry's name, and each part of a file's path, can't contain `\ / : * ? " < > |` or a control character, end in a dot or a space, or be a name Windows keeps for itself, such as `CON` or `NUL`.
+- A name can't start with a dot, since what the library keeps for itself does.
 - Names and paths that differ only by case count as the same.
 - A name is at most 64 characters, and a file's path inside its entry at most 150.
 - Paths inside an entry are written with `/` on every system.
@@ -519,6 +520,7 @@ Set `REFERENCE_STORE_HOME` to use another folder.
 - `config.json` has the stores, the default store, and the processors.
 - `processors/` is where processors run, and where their scripts are kept.
 - `index/` is what makes [large stores](#large-stores) quick to list. It is rebuilt when it is missing.
+- `locks/` keeps two processes from changing the same thing at once.
 - `stores/` has the clones of GitHub stores.
 
 A project's store is not in `config.json`. Its `.reference-store` folder is all there is to it.

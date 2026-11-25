@@ -45,6 +45,7 @@ reference-store skill
 
 - [Vision](docs/00-vision.md)
 - [Library reference](docs/01-library.md)
+- [CLI reference](docs/02-cli.md)
 
 ## Contributing
 
