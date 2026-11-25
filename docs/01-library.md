@@ -9,14 +9,6 @@ Any function can be called from several processes at once, such as agents workin
 A store is a place that holds entries: a directory, or a GitHub repository. Stores are registered on each machine, and one of them is the default.
 
 ```python
-def add_store(name: str, location: str, default: bool = False) -> Store
-def list_stores() -> list[Store]
-def set_default_store(name: str) -> Store
-def set_store_priority(name: str, priority_order: int) -> list[Store]
-def remove_store(name: str) -> None
-```
-
-```python
 class Store(BaseModel):
     name: str
     kind: Literal["directory", "github"]
@@ -27,18 +19,13 @@ class Store(BaseModel):
     available: bool  # False when it can't be reached, such as a NAS that is offline
 ```
 
-- `add_store` registers a store. `location` is a directory path or a GitHub repository URL. An empty or missing directory becomes a new store, and one that already holds a store is connected as it is. A directory with other things in it becomes a store too, and they are left alone. A project's folder, one with a `.reference-store` in it, registers that store. The first store added is the default. A new store gets the lowest priority.
-- `set_store_priority` gives a store that place, and the others shift to make room. No two stores share a `priority_order`.
-- `remove_store` only unregisters it. Nothing in the store is deleted. When it was the default, the store with the highest priority left becomes the default.
-
-A GitHub store is kept as a clone on the machine, so its files have real paths like any other store's.
-GitHub refuses files over 100 MB, so adding or moving one into a GitHub store is refused with an error that names the file. Put it in a directory store instead.
-
 A project can have its own store: a `.reference-store` folder in the project.
 It is found by looking in the current directory and then in each folder above it, so inside the project it is used without being registered.
 It is named after the project's folder, and comes before every other store.
-To use it from anywhere else, such as the app, register the same folder with `add_store`.
-It is still one store then. It goes by the name it was registered with, and inside the project it still comes first.
+To use it from anywhere else, such as the app, register the same folder with `add_store`. It then goes by the name it was registered with, and inside the project it still comes first.
+
+A GitHub store is kept as a clone on the machine, so its files have real paths like any other store's.
+GitHub refuses files over 100 MB, so adding or moving one into a GitHub store is refused with an error that names the file. Put it in a directory store instead.
 
 Most functions take an optional `store`. Without it:
 
@@ -48,55 +35,51 @@ Most functions take an optional `store`. Without it:
 
 A store that is not available is skipped. Naming it in `store` raises.
 
+### `add_store`
+
+```python
+def add_store(name: str, location: str, default: bool = False) -> Store
+```
+
+Registers a store on this machine. The first store added is the default, and a new store gets the lowest priority.
+
+- `location`: a directory path or a GitHub repository URL. An empty or missing directory becomes a new store, and one that already holds a store is connected as it is. A directory with other things in it becomes a store too, and they are left alone. A project's folder, one with a `.reference-store` in it, registers that store.
+
+### `list_stores`
+
+```python
+def list_stores() -> list[Store]
+```
+
+Returns the stores in priority order.
+
+### `set_default_store`
+
+```python
+def set_default_store(name: str) -> Store
+```
+
+Makes a registered store the default.
+
+### `set_store_priority`
+
+```python
+def set_store_priority(name: str, priority_order: int) -> list[Store]
+```
+
+Gives a store a place in the order, from 1 to the number of stores, and returns every store. The others shift to make room.
+
+### `remove_store`
+
+```python
+def remove_store(name: str) -> None
+```
+
+Unregisters a store. Nothing in it is deleted. When it was the default, the store with the highest priority left becomes the default.
+
 ## Entries
 
 An entry is one reference: a repo, a website, a tweet, or a game with its screenshots and videos.
-
-```python
-def add_entry(
-    name: str,
-    title: str | None = None,
-    description: str = "",
-    url: str | None = None,
-    tags: list[str] | None = None,
-    notes: str = "",
-    rating: int | None = None,
-    preview: NewPreview | None = None,
-    files: list[NewFile] | None = None,
-    created: datetime | None = None,
-    store: str | None = None,
-) -> Entry
-def get_entry(name: str, store: str | None = None) -> Entry
-def list_entries(
-    tags: list[str] | None = None,
-    file_tags: list[str] | None = None,
-    tag_match: Literal["all", "any"] = "all",
-    min_rating: int | None = None,
-    site: str | None = None,
-    store: str | None = None,
-    sort: Literal["name", "created", "updated", "rating", "size", "files", "tags", "store"] = "created",
-    descending: bool | None = None,
-    limit: int = 100,
-    after: str | None = None,
-) -> EntryListing
-def update_entry(
-    name: str,
-    title: str | NotGiven | None = NOT_GIVEN,
-    description: str | NotGiven = NOT_GIVEN,
-    url: str | NotGiven | None = NOT_GIVEN,
-    notes: str | NotGiven = NOT_GIVEN,
-    rating: int | NotGiven | None = NOT_GIVEN,
-    preview: NewPreview | NotGiven | None = NOT_GIVEN,
-    add_tags: list[str] | None = None,
-    remove_tags: list[str] | None = None,
-    store: str | None = None,
-) -> Entry
-def rename_entry(name: str, new_name: str, store: str | None = None) -> Entry
-def move_entry(name: str, to_store: str, store: str | None = None) -> Entry
-def delete_entry(name: str, store: str | None = None) -> None
-def list_tags(store: str | None = None) -> list[TagCount]
-def list_sites(store: str | None = None) -> list[SiteCount]
-```
 
 ```python
 class EntrySummary(BaseModel):
@@ -108,7 +91,7 @@ class EntrySummary(BaseModel):
     url: str | None
     tags: list[str]
     notes: str
-    rating: int | None  # 1 to 5
+    rating: int | None  # 1 to 5, where 5 is the best
     preview: Preview | None
     file_count: int
     size: int  # of all its files, in bytes
@@ -131,27 +114,154 @@ class EntryFile(BaseModel):
     tags: list[str]
 
 
+class Preview(BaseModel):
+    path: Path  # the image on this machine
+    url: str | None  # where the image came from
+```
+
+- `name` is unique in its store, and is the name of the entry's folder. [Names and paths](#names-and-paths) says what it can be.
+- `title` is for a title the name can't be, such as one with a colon. Every function still takes the `name`.
+- `description` says what the reference is. `notes` is free text for anything else, such as why it was saved.
+- A tag is any short text, such as `ux` or `Concept Art`. Tags that differ only by case are the same tag.
+- `preview` is an image that shows what the entry is about: a PNG, JPEG, WebP, GIF, AVIF, BMP, or SVG.
+- `created` is when the entry was added, and `updated` when it last changed, renaming and moving included. Times are kept in UTC, and one passed with no time zone is taken as local time.
+
+### `add_entry`
+
+```python
+def add_entry(
+    name: str,
+    title: str | None = None,
+    description: str = "",
+    url: str | None = None,
+    tags: list[str] | None = None,
+    notes: str = "",
+    rating: int | None = None,
+    preview: NewPreview | None = None,
+    files: list[NewFile] | None = None,
+    created: datetime | None = None,
+    store: str | None = None,
+) -> Entry
+
+
 class NewPreview(BaseModel):
     source: Path | None = None  # an image anywhere on the machine
     file: str | None = None  # or the path of one of the entry's files
     url: str | None = None  # where the image came from
+```
 
+Adds an entry with what it is given. It never fetches anything.
 
-class Preview(BaseModel):
-    path: Path  # the image on this machine
-    url: str | None
+- `preview`: a `source` is copied into the entry, and a `file` uses one of the entry's own files.
+- `files`: copied in as [`add_files`](#files-in-an-entry) does.
+- `created`: pass it to keep the date of a reference that was saved somewhere else before. Without it, now.
+
+### `get_entry`
+
+```python
+def get_entry(name: str, store: str | None = None) -> Entry
+```
+
+Returns an entry and its files, including files put in its folder by hand.
+
+### `list_entries`
+
+```python
+def list_entries(
+    tags: list[str] | None = None,
+    file_tags: list[str] | None = None,
+    tag_match: Literal["all", "any"] = "all",
+    min_rating: int | None = None,
+    site: str | None = None,
+    store: str | None = None,
+    sort: Literal["name", "created", "updated", "rating", "size", "files", "tags", "store"] = "created",
+    descending: bool | None = None,
+    limit: int = 100,
+    after: str | None = None,
+) -> EntryListing
 
 
 class EntryListing(BaseModel):
     entries: list[EntrySummary]
-    total: int
+    total: int  # how many there are in all
     after: str | None  # None on the last page
+```
+
+Returns a page of entries.
+
+- `tags`: keeps the entries that have every one.
+- `file_tags`: keeps the entries with a file that has every one.
+- `tag_match`: with `any`, one of the tags is enough, and a file with one of the file tags.
+- `min_rating`: keeps the entries rated that or better.
+- `site`: keeps the entries whose `url` is on a site, such as `github.com`, or in one group on it, such as `github.com/octocat`. See [`list_sites`](#list_sites).
+- `sort`: names, tags, and stores go from A, and the rest start with the newest, the best, or the largest. The title counts as the name, and an entry's tags are read as one line of text. Ties go by name, and an entry with no rating or no tags comes last.
+- `descending`: turns the sort's order around.
+- `after`: the `after` of the page before, to get the next one with the same `sort`. It marks the last entry shown, so entries added or removed in between don't make the next page skip or repeat any.
+
+### `update_entry`
+
+```python
+def update_entry(
+    name: str,
+    title: str | NotGiven | None = NOT_GIVEN,
+    description: str | NotGiven = NOT_GIVEN,
+    url: str | NotGiven | None = NOT_GIVEN,
+    notes: str | NotGiven = NOT_GIVEN,
+    rating: int | NotGiven | None = NOT_GIVEN,
+    preview: NewPreview | NotGiven | None = NOT_GIVEN,
+    add_tags: list[str] | None = None,
+    remove_tags: list[str] | None = None,
+    store: str | None = None,
+) -> Entry
+```
+
+Changes an entry. A field left out is `NOT_GIVEN` and stays as it is, and None clears `title`, `url`, `rating`, or `preview`. A call that changes nothing leaves `updated` as it was.
+
+- `add_tags` and `remove_tags`: tags are added and removed rather than replaced, so two callers tagging the same entry don't undo each other. A tag can't be in both.
+- `preview`: as in `add_entry`. One with only a `url` keeps the image and changes where it came from. A copied-in image is deleted once it is no longer the preview.
+
+### `rename_entry`
+
+```python
+def rename_entry(name: str, new_name: str, store: str | None = None) -> Entry
+```
+
+Renames the entry's folder, even when only the case changes. It is refused when the store already has the new name.
+
+### `move_entry`
+
+```python
+def move_entry(name: str, to_store: str, store: str | None = None) -> Entry
+```
+
+Moves an entry and its files to another store, under the same name. It is refused when that store already has the name.
+
+### `delete_entry`
+
+```python
+def delete_entry(name: str, store: str | None = None) -> None
+```
+
+Deletes the entry and its files. When a file in it is open in a program that keeps it from being deleted, nothing is.
+
+### `list_tags`
+
+```python
+def list_tags(store: str | None = None) -> list[TagCount]
 
 
 class TagCount(BaseModel):
     tag: str
     entries: int
     files: int
+```
+
+Returns each tag with how many entries and how many files have it, the most used first. Check it before making up a new tag.
+
+### `list_sites`
+
+```python
+def list_sites(store: str | None = None) -> list[SiteCount]
 
 
 class SiteCount(BaseModel):
@@ -165,45 +275,23 @@ class GroupCount(BaseModel):
     entries: int
 ```
 
-- `name` is unique in its store, and is the name of the entry's folder. [Names and paths](#names-and-paths) says what it can be.
-- `title` is for a title the name can't be, such as one with a colon. People are shown it in place of the name. Every function still takes the `name`.
-- `description` says what the reference is. `notes` is free text for anything else, such as why it was saved.
-- A tag is any short text, such as `ux` or `Concept Art`. Tags that differ only by case are the same tag.
-- `rating` goes from 1 to 5, and 5 is the best.
-- `preview` is an image that lets you see what the entry is about. It can be not set, providing a `source` path will copy the image into the entry, or providing a `file` path will use one of the entry's files. `url` can be used to set the source of the preview image. The image can be a PNG, JPEG, WebP, GIF, AVIF, BMP, or SVG.
-- `add_entry` only saves what it is given. It never fetches anything. `files` are copied in as `add_files` does.
-- `created` is when the entry is added. Pass it to keep the date of a reference that was saved somewhere else before. Times are kept in UTC, and one with no time zone is taken as local time.
-- `list_entries` returns entries that have every tag in `tags`, and with `file_tags`, a file that has every one of those. With `tag_match="any"`, one of the tags is enough, and a file with one of the file tags. `min_rating` keeps the entries rated that or better.
-- `site` keeps the entries whose `url` is on a site, such as `github.com`, or in one group on it, such as `github.com/octocat`.
-- `sort` orders them by name, by when they were added or last changed, by rating, by the size of their files, by how many they have, by their tags, or by their store. Names, tags, and stores go from A. The title counts as the name when there is one, and an entry's tags are read as one line of text. The rest start with the newest, the best, or the largest. `descending` turns either around. Ties go by name, and an entry with no rating or no tags comes last either way.
-- It returns a page of `limit` entries, and `total` says how many there are in all. Pass the page's `after` to get the next one, with the same `sort`. An `after` marks the last entry shown, so entries added or removed in between don't make the next page skip or repeat any.
-- `update_entry` keeps any field you leave out. Pass None to clear `title`, `url`, `rating`, or `preview`. Tags are added and removed rather than replaced, so two callers tagging the same entry don't undo each other.
-- `move_entry` moves an entry and its files to another store. It is refused when that store already has the name.
-- `delete_entry` deletes the entry and its files.
-- `list_tags` returns each tag with how many entries and how many files have it, the most used first. Check it before making up a new tag.
-- `list_sites` returns each site the entries link to with how many do, the most first. A site is named without `www.`.
-- On some sites, a link is also in a group, such as an owner on GitHub, a user on X, or a subreddit. `list_sites` says how many entries each group has. Out of the box, that is GitHub, GitLab, Codeberg, Hugging Face, X, Bluesky, Reddit, YouTube, itch.io, and GitHub Pages, and `twitter.com` counts as `x.com`. [`sites`](#sites) in the configuration changes or adds to them.
+Returns each site the entries link to with how many do, the most first. A site is named without `www.`.
+
+On some sites, a link is also in a group, and each group has its count. Out of the box, that is GitHub, GitLab, Codeberg, Hugging Face, X, Bluesky, Reddit, YouTube, itch.io, and GitHub Pages, and `twitter.com` counts as `x.com`. [`sites`](#sites) in the configuration changes or adds to them.
 
 ## Files in an entry
 
 An entry can hold any files: a backup of the page, a summary, screenshots, videos. Folders inside the entry organize them.
 
-```python
-def add_files(name: str, files: list[NewFile], store: str | None = None) -> Entry
-def update_file(
-    name: str,
-    path: str,
-    description: str | NotGiven = NOT_GIVEN,
-    notes: str | NotGiven = NOT_GIVEN,
-    add_tags: list[str] | None = None,
-    remove_tags: list[str] | None = None,
-    store: str | None = None,
-) -> Entry
-def rename_file(name: str, path: str, new_path: str, store: str | None = None) -> Entry
-def delete_file(name: str, path: str, store: str | None = None) -> Entry
-```
+- A file's `description` says what it is, so a reader knows what a screenshot shows without opening it. `notes` is for anything else, such as what the file is useful for. Both are for a single file, not a folder.
+- A file's `tags` work as an entry's do, and say what one file out of many is useful for.
+
+### `add_files`
 
 ```python
+def add_files(name: str, files: list[NewFile], store: str | None = None) -> Entry
+
+
 class NewFile(BaseModel):
     source: Path  # a file or a folder anywhere on the machine
     path: str | None = None  # where it goes in the entry
@@ -213,13 +301,12 @@ class NewFile(BaseModel):
     move: bool = False
 ```
 
-- `add_files` copies each `source` into the entry, or moves it there with `move`. Without `path` it goes at the top under its own name. A file that is already there is refused.
-- A folder is copied with everything in it. With a `path` of `.`, what is in the folder goes at the top of the entry instead.
-- `description` says what a file is, so a reader knows what a screenshot shows without opening it. `notes` is for anything else, such as what the file is useful for. Both are for a single file, not a folder.
-- `tags` on a file work as an entry's do, and say what one file out of many is useful for. On a folder, every file in it gets them.
-- `update_file` keeps what you leave out, as `update_entry` does. With a folder as `path` it only takes tags, and changes them on every file in it.
-- `rename_file` renames a file or a folder, or moves it to another folder in the entry.
-- `delete_file` deletes a file, or a folder and everything in it.
+Copies files and folders into an entry. A file that is already there is refused.
+
+- `source`: a folder is copied with everything in it.
+- `path`: without it, the source goes at the top of the entry under its own name. With `.`, what is in a folder goes at the top instead.
+- `tags`: on a folder, every file in it gets them.
+- `move`: moves the source into the entry instead of copying it.
 
 ```python
 add_files(
@@ -235,6 +322,42 @@ add_files(
     ],
 )
 ```
+
+### `update_file`
+
+```python
+def update_file(
+    name: str,
+    path: str,
+    description: str | NotGiven = NOT_GIVEN,
+    notes: str | NotGiven = NOT_GIVEN,
+    add_tags: list[str] | None = None,
+    remove_tags: list[str] | None = None,
+    store: str | None = None,
+) -> Entry
+```
+
+Changes what is said about a file. What is left out stays as it is, as in `update_entry`.
+
+- `path`: a file, or a folder. A folder only takes tags, and changes them on every file in it.
+
+### `rename_file`
+
+```python
+def rename_file(name: str, path: str, new_path: str, store: str | None = None) -> Entry
+```
+
+Renames a file or a folder, or moves it to another folder in the entry. What was said about it, and the preview, go with it.
+
+### `delete_file`
+
+```python
+def delete_file(name: str, path: str, store: str | None = None) -> Entry
+```
+
+Deletes a file, or a folder and everything in it.
+
+## Plain files
 
 A store is plain files:
 
@@ -287,7 +410,7 @@ What the library keeps for itself starts with a dot, so it is easy to tell from 
 }
 ```
 
-`.entry.json` and the copied-in preview are all the library adds to an entry's folder, and they are not among the entry's files. `preview.file` in `.entry.json` is the path of whichever file is the preview. The folder can be handed to any other program as it is.
+`.entry.json` and a copied-in preview are all the library adds to an entry's folder, and they aren't among its files. The folder can be handed to any other program as it is.
 Files you put in an entry's folder yourself are listed like any other, and renaming the folder renames the entry.
 An `.entry.json` you write yourself only needs what you want to say, even `{}`. The library adds the `id` and the dates the first time it reads it.
 One that can't be read, such as one with a typo in its JSON, leaves its entry out of listings, and `get_entry` says what is wrong with it.
@@ -306,10 +429,10 @@ Windows is the strictest about files, so its rules apply on every system. A stor
 
 ## Search
 
-Two ways to find things. `tags`, `file_tags`, `tag_match`, `min_rating`, `site`, and `store` narrow both the same way as `list_entries`.
-Both return pages with a `total`, as `list_entries` does.
+Two ways to find things: `grep_entries` looks through what entries say and what their files hold, and `glob_files` finds files by their paths.
+Both take the same filters as [`list_entries`](#list_entries), and both return pages with a `total` and an `after`, as it does.
 
-### Grep
+### `grep_entries`
 
 ```python
 def grep_entries(
@@ -327,9 +450,8 @@ def grep_entries(
     limit: int = 100,
     after: str | None = None,
 ) -> GrepListing
-```
 
-```python
+
 GrepField = Literal[
     "name",
     "title",
@@ -364,15 +486,18 @@ class GrepListing(BaseModel):
     after: str | None  # None on the last page
 ```
 
-`grep_entries` matches a regular expression, and returns each entry that matches with its first matches. An entry with a long saved page counts once, however many of its lines match.
-`fields` chooses what it looks in, and by default that is everything. `file_contents` reads text files only. `glob` keeps it to the files that match, as in `glob_files`.
-`limit` counts entries.
+Returns each entry that matches a regular expression, with its first matches. An entry with a long saved page counts once, however many of its lines match.
+
+- `fields`: what it looks in. By default, everything. `file_contents` reads text files only.
+- `glob`: keeps it to the files whose paths match, as in `glob_files`.
+- `matches_per_entry`: how many matches each result holds. `match_count` counts them all.
+- `limit`: counts entries, not matches.
 
 ```python
 grep_entries("assist mode", fields=["notes", "file_descriptions"], tags=["game"])
 ```
 
-### Glob
+### `glob_files`
 
 ```python
 def glob_files(
@@ -386,9 +511,8 @@ def glob_files(
     limit: int = 100,
     after: str | None = None,
 ) -> FileListing
-```
 
-```python
+
 class FileMatch(EntryFile):
     entry: str
     store: str
@@ -400,16 +524,17 @@ class FileListing(BaseModel):
     after: str | None  # None on the last page
 ```
 
-`glob_files` lists the files whose path matches a pattern. The path starts with the entry's name, so `game-1/**/*.png` is every PNG in one entry and `**/*.md` every Markdown file in all of them.
-`file_tags` keeps the files that have every tag in it, or any of them with `tag_match="any"`. `tags` is about their entries.
-Files come in the order of their paths.
+Returns the files whose path matches a pattern, in the order of their paths.
+
+- `pattern`: matched against the file's path starting with the entry's name, so `game-1/**/*.png` is every PNG in one entry and `**/*.md` every Markdown file in all of them.
+- `file_tags`: keeps the files that have every tag, or one of them with `tag_match="any"`. The other filters are about the files' entries.
 
 ```python
 glob_files("game-1/screenshots/**/*.png")
 glob_files("**/*.png", file_tags=["ux"])
 ```
 
-### Large stores
+## Large stores
 
 Listing, grep, and glob return a page at a time, so a caller never has to hold a whole store.
 A page of `list_entries` or `glob_files` takes about as long in a store of ten thousand entries as in one of a hundred.
@@ -423,18 +548,47 @@ A processor fills in an entry from what little it has, such as just a link. None
 A processor is any command, in any language, registered on the machine.
 
 ```python
+class Processor(BaseModel):
+    name: str
+    command: list[str]
+    description: str
+```
+
+### `add_processor`
+
+```python
 def add_processor(name: str, command: list[str], description: str = "") -> Processor
+```
+
+Registers a processor on this machine. `command` is the program and its arguments, run as [Writing a processor](#writing-a-processor) says.
+
+### `list_processors`
+
+```python
 def list_processors() -> list[Processor]
+```
+
+Returns the processors in the order they were added, which is the order they run in.
+
+### `remove_processor`
+
+```python
 def remove_processor(name: str) -> None
+```
+
+Unregisters a processor. Its script, if it has one, is left where it is.
+
+### `process_entry`
+
+```python
 async def process_entry(
     name: str,
     processors: list[str] | None = None,
     store: str | None = None,
     timeout_seconds: int = 300,
 ) -> ProcessResult
-```
 
-```python
+
 class ProcessResult(BaseModel):
     entry: Entry
     processors: list[ProcessorOutcome]
@@ -445,9 +599,18 @@ class ProcessorOutcome(BaseModel):
     error: str | None  # None when it worked
 ```
 
-`process_entry` runs each processor in the order they were added, or only the ones named. For each one it:
+Runs processors on an entry, one at a time, and returns the entry with what they filled in.
+Only fields that are empty are filled, and tags are added to the ones there. An entry that has a preview keeps it.
+One that fails is reported with what it wrote to stderr, and the rest still run.
 
-1. Runs the command from the `processors` folder, beside the [configuration](#configuration), with the entry as JSON on stdin.
+- `processors`: the ones to run. Without it, every one.
+- `timeout_seconds`: how long each one may run before it is stopped and reported as failed.
+
+### Writing a processor
+
+For each processor, `process_entry`:
+
+1. Runs the command with the entry as JSON on stdin.
 1. Lets it write files in the entry's `folder`.
 1. Reads JSON from its stdout with any of `description`, `url`, `notes`, `tags`, `preview`, and `files`.
 
@@ -465,9 +628,7 @@ class ProcessorOutcome(BaseModel):
 
 - `files` maps a file's path in the entry to its description.
 - `preview` is an image the processor saved, and the link it came from if it has one. A `source` is copied into the entry as its preview, so save it outside the entry's folder, such as in the temp folder. To use one of the entry's files as it is, give its path as `file` in place of `source`.
-
-Only fields that are empty are filled, and tags are added to the ones there. An entry that has a preview keeps it.
-A processor with nothing to do prints nothing. One that exits with an error is reported with what it wrote to stderr, and the rest still run.
+- A processor with nothing to do prints nothing. One that can't do its work exits with an error.
 
 For example, a processor can be a Python script with its dependencies declared inline, kept in the `processors` folder and run with [uv](https://docs.astral.sh/uv/):
 
@@ -493,7 +654,7 @@ if entry["url"]:
 add_processor("web-page", ["uv", "run", "--script", "web_page.py"], "Saves a copy of the page at the entry's url.")
 ```
 
-- The command runs from the `processors` folder, so it can name a script there by its file name.
+- The command runs from the `processors` folder, beside the [configuration](#configuration), so it can name a script there by its file name.
 - It never runs from inside an entry. An entry can hold a copy of someone else's project, and uv and other tools read settings from the folder they run in.
 - The command is found on `PATH` as a terminal finds it, so a `.exe` or a `.cmd` works on Windows.
 - The JSON is UTF-8 both ways. `PYTHONUTF8=1` is set for the command, so a Python script reads and prints UTF-8 on Windows too.
@@ -502,17 +663,21 @@ add_processor("web-page", ["uv", "run", "--script", "web_page.py"], "Saves a cop
 
 ```python
 def app_server() -> AppServer
-```
 
-```python
+
 class AppServer:
     def open(self, port: int | None = None, lan: bool = False) -> App: ...
     def close(self) -> None: ...
+
+
+class App(BaseModel):
+    url: str  # where to open the app
 ```
 
-`open` serves the app in a browser page and returns once it listens. `App.url` is where to open it. Without `port` it picks a free one.
+Returns the app's server. `open` serves the app in a browser page and returns once it listens, and `close` stops it.
 
-By default it listens on `127.0.0.1` only. With `lan` it listens on the local network, so a phone can add references, and only answers devices on that network.
+- `port`: without it, a free one.
+- `lan`: listens on the local network, so a phone can add references, and only answers devices on that network. Without it, it listens on `127.0.0.1` only.
 
 ## Configuration
 
@@ -521,7 +686,7 @@ Set `REFERENCE_STORE_HOME` to use another folder.
 
 - `config.json` has the stores, the default store, the sites, and the processors.
 - `processors/` is where processors run, and where their scripts are kept.
-- `index/` is what makes [large stores](#large-stores) quick to list. It is rebuilt when it is missing.
+- `index/` is what makes [large stores](#large-stores) quick to list.
 - `locks/` keeps two processes from changing the same thing at once.
 - `stores/` has the clones of GitHub stores.
 

@@ -65,7 +65,9 @@ def locked(name: str) -> Generator[None]:
     """
     path = home() / LOCKS / f"{name}.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
-    lock = FileLock(path, timeout=LOCK_SECONDS)
+    # One instance per file, so a thread that already holds the lock can take it again, as reading an entry does
+    # while the entry is being changed.
+    lock = FileLock(path, timeout=LOCK_SECONDS, is_singleton=True)
     try:
         lock.acquire()
     except Timeout:

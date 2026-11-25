@@ -84,6 +84,24 @@ files: 2, 1.3 MB
 
 Times are local. With `--json`, they are in UTC, and each file also has its notes and when it was modified.
 
+## Changing entries
+
+```
+reference-store update-entry <name> [--title <text>] [--description <text>] [--url <url>] [--notes <text>]
+    [--rating <1-5>] [--preview <image>] [--preview-file <path>] [--preview-url <url>] [--add-tag <tag>]...
+    [--remove-tag <tag>]... [--clear <field>]... [--store <store>]
+reference-store rename-entry <name> <new-name> [--store <store>]
+reference-store move-entry <name> <to-store> [--store <store>]
+reference-store delete-entry <name> [--store <store>]
+```
+
+- Leaving an option out is leaving the argument out, so what is there stays.
+- `--clear` empties `title`, `description`, `url`, `notes`, `rating`, or `preview`. Windows PowerShell 5.1 drops an empty argument such as `--description ""`, so `--clear description` works everywhere.
+- `add_tags` and `remove_tags`: repeat `--add-tag` and `--remove-tag` for each one.
+- `preview`: `--preview` is an image to copy in, `--preview-file` one of the entry's files, and `--preview-url` where it came from. `--preview-url` alone keeps the image.
+
+`update-entry`, `rename-entry`, and `move-entry` print the entry as `get-entry` does. `delete-entry` says the entry was deleted, and takes no `--json`.
+
 ## Listing
 
 ```

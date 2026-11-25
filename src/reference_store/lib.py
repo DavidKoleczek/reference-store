@@ -4,10 +4,21 @@ from datetime import datetime
 
 from reference_store.app.server import AppServer
 from reference_store.capabilities.listing import listing
-from reference_store.capabilities.manage_entries import manage_entries
+from reference_store.capabilities.manage_entries import manage_entries, relocate
 from reference_store.capabilities.manage_stores import manage_stores
 from reference_store.core import stores
-from reference_store.models import Entry, EntryListing, EntrySort, NewPreview, SiteCount, Store, TagCount, TagMatch
+from reference_store.models import (
+    NOT_GIVEN,
+    Entry,
+    EntryListing,
+    EntrySort,
+    NewPreview,
+    NotGiven,
+    SiteCount,
+    Store,
+    TagCount,
+    TagMatch,
+)
 from reference_store.skill import skill as skill_module
 
 
@@ -160,6 +171,66 @@ def list_sites(store: str | None = None) -> list[SiteCount]:
             expression.
     """
     return listing.list_sites(store)
+
+
+def update_entry(
+    name: str,
+    title: str | NotGiven | None = NOT_GIVEN,
+    description: str | NotGiven = NOT_GIVEN,
+    url: str | NotGiven | None = NOT_GIVEN,
+    notes: str | NotGiven = NOT_GIVEN,
+    rating: int | NotGiven | None = NOT_GIVEN,
+    preview: NewPreview | NotGiven | None = NOT_GIVEN,
+    add_tags: list[str] | None = None,
+    remove_tags: list[str] | None = None,
+    store: str | None = None,
+) -> Entry:
+    """Changes an entry, and keeps any field left out. None clears `title`, `url`, `rating`, or `preview`.
+
+    Tags are added and removed rather than replaced, so two callers tagging the same entry don't undo each other.
+
+    A preview's `source` is copied in, and its `file` is one of the entry's own images. A preview with only a `url`
+    keeps the image and changes where it came from. A copied-in image is deleted once it is no longer the preview.
+
+    `updated` only changes when something else does.
+
+    Raises:
+        ReferenceStoreError: There is no entry with that name, the rating is outside 1 to 5, a tag is both added and
+            removed, or the preview can't be one.
+    """
+    return manage_entries.update_entry(
+        name, title, description, url, notes, rating, preview, add_tags, remove_tags, store
+    )
+
+
+def rename_entry(name: str, new_name: str, store: str | None = None) -> Entry:
+    """Renames an entry, which renames its folder. It keeps its id.
+
+    Raises:
+        ReferenceStoreError: There is no entry with that name, the new name breaks a rule or is taken in its store, or
+            a file in it is open in a program that keeps it from moving.
+    """
+    return relocate.rename_entry(name, new_name, store)
+
+
+def move_entry(name: str, to_store: str, store: str | None = None) -> Entry:
+    """Moves an entry and its files to another store. It keeps its name and its id.
+
+    Raises:
+        ReferenceStoreError: There is no entry with that name, `to_store` can't be used or is where the entry is
+            already, it already has the name, or a file in the entry is open in a program that keeps it from moving.
+    """
+    return relocate.move_entry(name, to_store, store)
+
+
+def delete_entry(name: str, store: str | None = None) -> None:
+    """Deletes an entry and its files.
+
+    Raises:
+        ReferenceStoreError: There is no entry with that name, or a file in it is open in a program that keeps it from
+            being deleted, in which case nothing is.
+    """
+    manage_entries.delete_entry(name, store)
 
 
 def app_server() -> AppServer:

@@ -83,8 +83,10 @@ def entries_in(store: Store) -> Iterator[Entry]:
     """
     try:
         with os.scandir(store.path) as found:
+            # A name can't start with a dot, so such a folder is the library's own, such as one being deleted.
             folders = sorted(
-                (Path(item.path) for item in found if item.is_dir()), key=lambda path: names.key(path.name)
+                (Path(item.path) for item in found if item.is_dir() and not item.name.startswith(".")),
+                key=lambda path: names.key(path.name),
             )
     except OSError:
         return
@@ -128,7 +130,7 @@ def write(folder: Path, record: EntryRecord) -> None:
 
 def entry_of(store: Store, folder: Path, record: EntryRecord) -> Entry:
     """Returns the entry, with the files that are in its folder now."""
-    files = _files(folder, record)
+    files = files_of(folder, record)
     return Entry(
         id=record.id,
         name=folder.name,
@@ -155,10 +157,16 @@ def summary_of(entry: Entry) -> EntrySummary:
 
 
 @contextlib.contextmanager
-def locked(folder: Path) -> Generator[None]:
-    """Holds the entry's lock, so only one process changes it at a time."""
-    identity = f"{os.path.normcase(folder.parent)}/{names.key(folder.name)}"
-    with config.locked(f"entry-{hashlib.sha256(identity.encode()).hexdigest()[:32]}"):
+def locked(*folders: Path) -> Generator[None]:
+    """Holds the lock of each entry folder, so only one process changes an entry at a time.
+
+    A folder is locked by its store and its name whatever its case, so a name can be locked before anything has it.
+    The locks are taken in one order, so two processes that each want two of them never wait on each other.
+    """
+    identities = {f"{os.path.normcase(folder.parent)}/{names.key(folder.name)}" for folder in folders}
+    with contextlib.ExitStack() as held:
+        for identity in sorted(identities):
+            held.enter_context(config.locked(f"entry-{hashlib.sha256(identity.encode()).hexdigest()[:32]}"))
         yield
 
 
@@ -192,6 +200,11 @@ def check_rating(rating: int | None) -> None:
         raise ReferenceStoreError(f"A rating goes from 1 to 5, where 5 is the best, so it can't be {rating}.")
 
 
+def what_is(path: Path) -> str:
+    """Returns what is at a path in a store, such as `an entry`, to say what has taken a name."""
+    return "an entry" if (path / ENTRY_FILE).is_file() else "a folder" if path.is_dir() else "a file"
+
+
 def child(folder: Path, name: str) -> Path | None:
     """Returns what is in the folder under that name, whatever its case, or None when there is nothing."""
     try:
@@ -202,33 +215,7 @@ def child(folder: Path, name: str) -> Path | None:
     return None if match is None else folder / match
 
 
-def _load(path: Path) -> dict[str, Any]:
-    text = disk.read_text(path)
-    if text is None:
-        raise ReferenceStoreError(f"{path} is gone, so its folder is no longer an entry.")
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as error:
-        raise ReferenceStoreError(
-            f"{path} isn't JSON: {error}. Fix it, or delete it to make the folder plain files."
-        ) from None
-    if not isinstance(data, dict):
-        raise ReferenceStoreError(
-            f"{path} has to hold a JSON object. Fix it, or delete it to make the folder plain files."
-        )
-    return data
-
-
-def _parsed(path: Path, data: dict[str, Any]) -> EntryRecord:
-    try:
-        return EntryRecord.model_validate(data)
-    except ValidationError as error:
-        raise ReferenceStoreError(
-            f"{path} can't be read as an entry. Fix it, or delete it to make the folder plain files.\n{error}"
-        ) from None
-
-
-def _files(folder: Path, record: EntryRecord) -> list[EntryFile]:
+def files_of(folder: Path, record: EntryRecord) -> list[EntryFile]:
     """Returns every file in the entry's folder but the library's own, in the order of their paths."""
     said = {names.key(path): about for path, about in record.files.items()}
     files: list[EntryFile] = []
@@ -259,6 +246,32 @@ def _files(folder: Path, record: EntryRecord) -> list[EntryFile]:
     return sorted(files, key=lambda file: [names.key(part) for part in file.path.split("/")])
 
 
+def _load(path: Path) -> dict[str, Any]:
+    text = disk.read_text(path)
+    if text is None:
+        raise ReferenceStoreError(f"{path} is gone, so its folder is no longer an entry.")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ReferenceStoreError(
+            f"{path} isn't JSON: {error}. Fix it, or delete it to make the folder plain files."
+        ) from None
+    if not isinstance(data, dict):
+        raise ReferenceStoreError(
+            f"{path} has to hold a JSON object. Fix it, or delete it to make the folder plain files."
+        )
+    return data
+
+
+def _parsed(path: Path, data: dict[str, Any]) -> EntryRecord:
+    try:
+        return EntryRecord.model_validate(data)
+    except ValidationError as error:
+        raise ReferenceStoreError(
+            f"{path} can't be read as an entry. Fix it, or delete it to make the folder plain files.\n{error}"
+        ) from None
+
+
 def _preview(folder: Path, record: EntryRecord) -> Preview | None:
     """Returns the entry's preview, or None when its image is no longer where `.entry.json` says."""
     if record.preview is None:
@@ -269,8 +282,12 @@ def _preview(folder: Path, record: EntryRecord) -> Preview | None:
     return Preview(path=path, url=record.preview.url)
 
 
+def is_copied_preview(path: str) -> bool:
+    """Returns whether a path in an entry is a preview copied in, rather than one of the entry's files."""
+    stem, _, suffix = names.key(path).rpartition(".")
+    return stem == PREVIEW_STEM and f".{suffix}" in PREVIEW_SUFFIXES
+
+
 def _is_the_librarys(name: str) -> bool:
     """Returns whether a file at the top of an entry is one the library keeps there, rather than one of its files."""
-    key = names.key(name)
-    stem, _, suffix = key.rpartition(".")
-    return key == ENTRY_FILE or disk.is_temporary(name) or (stem == PREVIEW_STEM and f".{suffix}" in PREVIEW_SUFFIXES)
+    return names.key(name) == ENTRY_FILE or disk.is_temporary(name) or is_copied_preview(name)

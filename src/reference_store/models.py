@@ -11,6 +11,16 @@ class ReferenceStoreError(Exception):
     """A failure the caller can act on. Its message says what went wrong and how to fix it."""
 
 
+class NotGiven:
+    """The type of `NOT_GIVEN`: an argument left out, which keeps what is there, where None would clear it."""
+
+    def __repr__(self) -> str:
+        return "NOT_GIVEN"
+
+
+NOT_GIVEN = NotGiven()
+
+
 class Store(BaseModel):
     """A place that holds entries: a directory, or a GitHub repository."""
 

@@ -3,6 +3,7 @@
 from collections.abc import Generator
 import contextlib
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 import time
 from typing import Annotated
@@ -12,6 +13,7 @@ import typer
 
 from reference_store import lib
 from reference_store.models import (
+    NOT_GIVEN,
     Entry,
     EntrySort,
     EntrySummary,
@@ -28,6 +30,18 @@ STORES = TypeAdapter(list[Store])
 TAGS = TypeAdapter(list[TagCount])
 SITES = TypeAdapter(list[SiteCount])
 SIZE_UNITS = ("bytes", "KB", "MB", "GB", "TB")
+
+
+class Clearable(StrEnum):
+    """The fields `update-entry --clear` empties."""
+
+    TITLE = "title"
+    DESCRIPTION = "description"
+    URL = "url"
+    NOTES = "notes"
+    RATING = "rating"
+    PREVIEW = "preview"
+
 
 app = typer.Typer(
     name=DISTRIBUTION,
@@ -264,6 +278,120 @@ def get_entry(
     with _reported():
         entry = lib.get_entry(name, store)
     typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
+
+
+@app.command()
+def update_entry(
+    name: Annotated[str, typer.Argument(help="The entry's name.")],
+    title: Annotated[str | None, typer.Option(help="A title the name can't be, such as one with a colon.")] = None,
+    description: Annotated[str | None, typer.Option(help="What the reference is.")] = None,
+    url: Annotated[str | None, typer.Option(help="The reference's link.")] = None,
+    notes: Annotated[str | None, typer.Option(help="Anything else, such as why it was saved.")] = None,
+    rating: Annotated[int | None, typer.Option(help="From 1 to 5, where 5 is the best.")] = None,
+    preview: Annotated[Path | None, typer.Option(help="An image to copy in as the entry's preview.")] = None,
+    preview_file: Annotated[
+        str | None, typer.Option(help="One of the entry's images to make its preview, such as screenshots/menu.png.")
+    ] = None,
+    preview_url: Annotated[
+        str | None, typer.Option(help="Where the preview image came from. On its own, it keeps the image.")
+    ] = None,
+    add_tag: Annotated[list[str] | None, typer.Option(help="A tag to add. Repeat it for each one.")] = None,
+    remove_tag: Annotated[list[str] | None, typer.Option(help="A tag to remove. Repeat it for each one.")] = None,
+    clear: Annotated[
+        list[Clearable] | None, typer.Option(help="A field to clear. Repeat it for each one.", show_default=False)
+    ] = None,
+    store: Annotated[
+        str | None,
+        typer.Option(help="The store it is in. Without it, the store with the highest priority that has it."),
+    ] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """Change an entry. Whatever is left out stays as it is.
+
+    Tags are added and removed rather than replaced, so two callers tagging the same entry don't undo each other.
+    """
+    cleared = set(clear or [])
+    for field, value in (
+        ("title", title),
+        ("description", description),
+        ("url", url),
+        ("notes", notes),
+        ("rating", rating),
+    ):
+        if field in cleared and value is not None:
+            raise typer.BadParameter(f"--{field} and --clear {field} can't both be given.", param_hint="--clear")
+    previewed = preview is not None or preview_file is not None or preview_url is not None
+    if "preview" in cleared and previewed:
+        raise typer.BadParameter(
+            "--clear preview can't go with --preview, --preview-file, or --preview-url.", param_hint="--clear"
+        )
+    with _reported():
+        entry = lib.update_entry(
+            name,
+            title=None if "title" in cleared else NOT_GIVEN if title is None else title,
+            description="" if "description" in cleared else NOT_GIVEN if description is None else description,
+            url=None if "url" in cleared else NOT_GIVEN if url is None else url,
+            notes="" if "notes" in cleared else NOT_GIVEN if notes is None else notes,
+            rating=None if "rating" in cleared else NOT_GIVEN if rating is None else rating,
+            preview=None
+            if "preview" in cleared
+            else NewPreview(source=preview, file=preview_file, url=preview_url)
+            if previewed
+            else NOT_GIVEN,
+            add_tags=add_tag,
+            remove_tags=remove_tag,
+            store=store,
+        )
+    typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
+
+
+@app.command()
+def rename_entry(
+    name: Annotated[str, typer.Argument(help="The entry's name.")],
+    new_name: Annotated[str, typer.Argument(help="Its new name, which is also its folder's.")],
+    store: Annotated[
+        str | None,
+        typer.Option(help="The store it is in. Without it, the store with the highest priority that has it."),
+    ] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """Rename an entry, and its folder with it. It keeps its id."""
+    with _reported():
+        entry = lib.rename_entry(name, new_name, store)
+    typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
+
+
+@app.command()
+def move_entry(
+    name: Annotated[str, typer.Argument(help="The entry's name.")],
+    to_store: Annotated[str, typer.Argument(help="The store to move it to.")],
+    store: Annotated[
+        str | None,
+        typer.Option(help="The store it is in. Without it, the store with the highest priority that has it."),
+    ] = None,
+    json: Annotated[bool, typer.Option("--json", help=JSON_HELP)] = False,
+) -> None:
+    """Move an entry and its files to another store. It keeps its name and its id."""
+    with _reported():
+        entry = lib.move_entry(name, to_store, store)
+    typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
+
+
+@app.command()
+def delete_entry(
+    name: Annotated[str, typer.Argument(help="The entry's name.")],
+    store: Annotated[
+        str | None,
+        typer.Option(help="The store it is in. Without it, the store with the highest priority that has it."),
+    ] = None,
+) -> None:
+    """Delete an entry and its files.
+
+    When a file in it is open in a program that keeps it from being deleted, nothing is.
+    """
+    with _reported():
+        lib.delete_entry(name, store)
+    typer.echo(f"Deleted the entry {name} and its files.")
 
 
 @app.command()
