@@ -125,6 +125,7 @@ uv run build-app.py
 `windows/` contains the Windows installer and app.
 The build puts the tool's wheel in the exe, with its dependencies pinned to `uv.lock`. The version comes from `pyproject.toml` and the icon from `app/public/favicon.svg`.
 The setup window's page is plain HTML, CSS, and JavaScript in `windows/ui/`.
+The Agent Skill is installed with the skills CLI's library. `windows/skills/` pins it with npm's lock, and pins the Node that is downloaded when the one installed is too old.
 
 Format, lint, test, and build `windows/target/release/ReferenceStoreSetup.exe`:
 
@@ -132,7 +133,7 @@ Format, lint, test, and build `windows/target/release/ReferenceStoreSetup.exe`:
 uv run build-windows.py
 ```
 
-To try the exe without installing anything for real, set `REFERENCE_STORE_SANDBOX` to a folder. Everything is installed into that folder instead, and the registry entries go to `HKCU\Software\ReferenceStoreSandbox`, which Windows ignores:
+To try the exe without installing anything for real, set `REFERENCE_STORE_SANDBOX` to a folder. Everything is installed into that folder instead, with the agents' folders under its `profile` folder, and the registry entries go to `HKCU\Software\ReferenceStoreSandbox`, which Windows ignores:
 
 ```powershell
 $env:REFERENCE_STORE_SANDBOX = "temp\windows-sandbox"
@@ -154,11 +155,13 @@ In VS Code, the `Windows app (sandbox)` launch configuration debugs setup in the
 
 ### Releases
 
-A release is made when the version changes on main. Bump it, commit `pyproject.toml` and `uv.lock`, and push:
+A release is made when the version changes on main. Bump it, set the same version as `metadata.version` in `src/reference_store/skill/reference-store/SKILL.md`, commit those and `uv.lock`, and push:
 
 ```bash
 uv version --bump patch
 ```
+
+A test fails while the two versions differ.
 
 The Release workflow runs the checks, builds `ReferenceStoreSetup.exe`, and publishes it as the release `v<version>`. Installed apps offer the update within a day.
 It can also be run by hand from the Actions tab, and does nothing when the version is released already.

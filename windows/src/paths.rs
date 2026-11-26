@@ -44,6 +44,8 @@ pub struct Paths {
     pub documents: PathBuf,
     /// The folder Astral's installer puts uv in, where it is looked for when `PATH` doesn't have it yet.
     pub uv_bin: PathBuf,
+    /// The user's own folder, which agents keep their skills under.
+    pub profile: PathBuf,
     registry: &'static str,
     sandbox: Option<PathBuf>,
 }
@@ -89,6 +91,7 @@ impl Paths {
             desktop: folders.desktop,
             documents: folders.documents,
             uv_bin: folders.profile.join(UV_BIN),
+            profile: folders.profile,
             registry: WINDOWS_REGISTRY,
             sandbox: None,
         }
@@ -103,6 +106,7 @@ impl Paths {
             desktop: sandbox.join("desktop"),
             documents: sandbox.join("documents"),
             uv_bin: sandbox.join("uv"),
+            profile: sandbox.join("profile"),
             registry: SANDBOX_REGISTRY,
             sandbox: Some(sandbox),
         }
@@ -200,7 +204,7 @@ mod tests {
         let sandbox = Path::new(r"D:\try");
         let paths = Paths::sandboxed(sandbox.to_owned());
         let folders = [&paths.install, &paths.local, &paths.home, &paths.start_menu, &paths.desktop, &paths.documents];
-        for folder in folders.into_iter().chain([&paths.uv_bin]) {
+        for folder in folders.into_iter().chain([&paths.uv_bin, &paths.profile]) {
             assert!(folder.starts_with(sandbox));
         }
         for (_, folder) in paths.environment() {

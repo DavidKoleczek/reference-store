@@ -3,8 +3,11 @@ import { useSyncExternalStore } from "react";
 import {
   changeWindowsApp,
   checkForUpdate,
+  installSkill,
   installUpdate,
   readWindowsApp,
+  removeSkill,
+  type SkillMode,
   type WindowsApp,
 } from "@/lib/api";
 import { expectRestarts, tellHostOfRestart } from "@/lib/restart";
@@ -71,6 +74,14 @@ export async function lookForUpdate() {
 export async function update() {
   tellHostOfRestart();
   show(await installUpdate());
+}
+
+export async function setSkill(agents: string[], mode: SkillMode) {
+  show(await installSkill(agents, mode));
+}
+
+export async function dropSkill() {
+  show(await removeSkill());
 }
 
 function subscribe(listener: () => void): () => void {

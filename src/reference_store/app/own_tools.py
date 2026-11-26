@@ -2,7 +2,7 @@
 remembers, and the Windows app when that is what runs it."""
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 import segno
@@ -53,6 +53,11 @@ class ChangeWindowsAppArguments(Arguments):
     start_at_sign_in: bool | None = None
 
 
+class InstallSkillArguments(Arguments):
+    agents: list[str]  # the agents with folders of their own, by the skills CLI's ids
+    mode: Literal["symlink", "copy"]  # how they get the skill: a link to the shared copy, or a copy of their own
+
+
 def own_tools(known: Known, lan_url: Callable[[], str | None]) -> list[AppTool]:
     """Returns the app's own tools. `lan_url` says where a device on the local network opens the app, if it can."""
 
@@ -100,6 +105,15 @@ def own_tools(known: Known, lan_url: Callable[[], str | None]) -> list[AppTool]:
     def install_update(_: Arguments) -> dict[str, Any]:
         return windows_app.install_update().model_dump(mode="json")
 
+    def list_skill_agents(_: Arguments) -> dict[str, Any]:
+        return windows_app.list_agents().model_dump(mode="json")
+
+    def install_skill(checked: InstallSkillArguments) -> dict[str, Any]:
+        return windows_app.install_skill(checked.agents, checked.mode).model_dump(mode="json")
+
+    def remove_skill(_: Arguments) -> dict[str, Any]:
+        return windows_app.remove_skill().model_dump(mode="json")
+
     return [
         AppTool(
             name="image_sizes",
@@ -145,8 +159,8 @@ def own_tools(known: Known, lan_url: Callable[[], str | None]) -> list[AppTool]:
         AppTool(
             name="read_windows_app",
             description="Returns what the Windows app that runs this server is like: its version, the newer version "
-            "there is to update to, and whether it is on the local network and starts at sign-in. Null when the "
-            "server was started any other way.",
+            "there is to update to, whether it is on the local network and starts at sign-in, and the agents its "
+            "Agent Skill is installed for. Null when the server was started any other way.",
             arguments=Arguments,
             run=read_windows_app,
             local_only=True,
@@ -172,6 +186,30 @@ def own_tools(known: Known, lan_url: Callable[[], str | None]) -> list[AppTool]:
             "one on the same port.",
             arguments=Arguments,
             run=install_update,
+            local_only=True,
+        ),
+        AppTool(
+            name="list_skill_agents",
+            description="Has the Windows app list the agents its Agent Skill can be installed for, which ones are on "
+            "this computer, and which have it. The first time, it gets the skills CLI, which can take a minute.",
+            arguments=Arguments,
+            run=list_skill_agents,
+            local_only=True,
+        ),
+        AppTool(
+            name="install_skill",
+            description="Has the Windows app install its Agent Skill in the shared folder every agent there reads, "
+            "and for the agents given, and take it from the others. Returns what the app is like after.",
+            arguments=InstallSkillArguments,
+            run=install_skill,
+            local_only=True,
+        ),
+        AppTool(
+            name="remove_skill",
+            description="Has the Windows app remove its Agent Skill from every agent. Returns what the app is like "
+            "after.",
+            arguments=Arguments,
+            run=remove_skill,
             local_only=True,
         ),
     ]

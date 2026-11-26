@@ -21,6 +21,7 @@ use crate::failure::{Failure, OrSay, Outcome};
 use crate::install::{self, Existing, Options, Progress, Shortcuts};
 use crate::package::{APP_NAME, VERSION};
 use crate::paths::Paths;
+use crate::skill::{Choice, Kit, Mode};
 use crate::startup::BACKGROUND;
 use crate::win32;
 
@@ -53,6 +54,10 @@ enum Event {
     /// What the page asked, as it sent it.
     Page(String),
     Found(Existing),
+    /// Node is being downloaded for the skills CLI, which takes a while.
+    Downloading,
+    /// The skills CLI, ready, with the agents it lists.
+    Agents(Box<Outcome<(Kit, Value)>>),
     Progress(Progress),
     Installed(Outcome<()>),
 }
@@ -63,6 +68,10 @@ struct Setup<'a> {
     tell: EventLoopProxy<Event>,
     window: &'a Window,
     page: &'a WebView,
+    /// The skills CLI, once it has listed the agents, for installing the skill with.
+    kit: Option<Kit>,
+    /// Whether the skills CLI is being gotten ready, which one page asking twice doesn't do twice.
+    listing: bool,
     installing: bool,
     /// Whether an update failed, which had the app quit first.
     update_failed: bool,
@@ -99,8 +108,17 @@ pub fn run(paths: &Paths, purpose: Purpose) -> Outcome<()> {
         .or_say(failed)?;
     window.set_visible(true);
 
-    let mut setup =
-        Setup { paths, purpose, tell, window: &window, page: &page, installing: false, update_failed: false };
+    let mut setup = Setup {
+        paths,
+        purpose,
+        tell,
+        window: &window,
+        page: &page,
+        kit: None,
+        listing: false,
+        installing: false,
+        update_failed: false,
+    };
     event_loop.run_return(|event, _, flow| {
         let going = match event {
             // Closing it would end an install halfway.
@@ -130,7 +148,7 @@ fn offer_web_view() -> Outcome<()> {
 /// Updates with no window to show it in, on a computer whose web view has gone since the app was set up.
 fn update_unseen(paths: &Paths) -> Outcome<()> {
     let options = Existing::find(paths).kept()?;
-    install::install(&options, paths, &mut |_| {})?;
+    install::install(&options, None, paths, &mut |_| {})?;
     let mut app = Command::new(paths.exe());
     app.arg(BACKGROUND).spawn().or_say(|| format!("{APP_NAME} was updated, but couldn't be started again"))?;
     Ok(())
@@ -191,6 +209,17 @@ impl Setup<'_> {
                 Purpose::Install => self.show(&ready(&existing)),
                 Purpose::Update => self.update(existing),
             },
+            Event::Downloading => self.show(&json!({ "is": "downloading" })),
+            Event::Agents(listed) => {
+                self.listing = false;
+                match *listed {
+                    Ok((kit, agents)) => {
+                        self.kit = Some(kit);
+                        self.show(&json!({ "is": "agents", "agents": agents }));
+                    }
+                    Err(failure) => self.show(&json!({ "is": "noAgents", "text": failure.to_string() })),
+                }
+            }
             Event::Progress(Progress::Started(stage)) => self.show(&json!({ "is": "started", "label": stage.label() })),
             Event::Progress(Progress::Note(text)) => self.show(&json!({ "is": "note", "text": text })),
             Event::Installed(outcome) => {
@@ -222,6 +251,7 @@ impl Setup<'_> {
                 Ok(None) => {}
                 Err(error) => self.fail(&Failure::new(format!("The folder couldn't be asked for: {error}"))),
             },
+            Some("agents") => self.list_agents(),
             Some("install") => self.install(chosen(&message)),
             Some("open") => return !self.start_app(false),
             Some("close") => return false,
@@ -243,6 +273,22 @@ impl Setup<'_> {
         started.is_ok()
     }
 
+    /// Gets the skills CLI ready, when it isn't yet, and has it list the agents, from a thread of its own.
+    fn list_agents(&mut self) {
+        if self.listing {
+            return;
+        }
+        self.listing = true;
+        let (kit, paths, tell) = (self.kit.take(), self.paths.clone(), self.tell.clone());
+        thread::spawn(move || {
+            let downloading = tell.clone();
+            let kit =
+                kit.map_or_else(|| Kit::prepare(&paths, &mut || drop(downloading.send_event(Event::Downloading))), Ok);
+            let listed = kit.and_then(|kit| kit.agents().map(|agents| (kit, agents)));
+            drop(tell.send_event(Event::Agents(Box::new(listed))));
+        });
+    }
+
     fn update(&mut self, existing: Existing) {
         self.show(&json!({ "is": "updating", "version": VERSION, "installed": existing.version }));
         match existing.kept() {
@@ -261,9 +307,9 @@ impl Setup<'_> {
             )));
         }
         self.installing = true;
-        let (paths, tell) = (self.paths.clone(), self.tell.clone());
+        let (kit, paths, tell) = (self.kit.take(), self.paths.clone(), self.tell.clone());
         thread::spawn(move || {
-            let outcome = install::install(&options, &paths, &mut |progress| {
+            let outcome = install::install(&options, kit, &paths, &mut |progress| {
                 drop(tell.send_event(Event::Progress(progress)));
             });
             drop(tell.send_event(Event::Installed(outcome)));
@@ -289,6 +335,17 @@ fn chosen(message: &Value) -> Options {
         lan: chose("lan"),
         shortcuts: Shortcuts { desktop: chose("desktopShortcut"), start_menu: chose("startMenuShortcut") },
         start_at_sign_in: chose("startAtSignIn"),
+        skill: chosen_skill(&message["skill"]),
+    }
+}
+
+/// Reads the skill's choice: the agents and how, false for none, and nothing to leave it as it is.
+fn chosen_skill(skill: &Value) -> Choice {
+    let agents = skill["agents"].as_array().map(|agents| agents.iter().filter_map(Value::as_str).map(str::to_owned));
+    match (skill, agents, skill["mode"].as_str().and_then(Mode::from_name)) {
+        (Value::Bool(false), _, _) => Choice::Remove,
+        (_, Some(agents), Some(mode)) => Choice::Install { agents: agents.collect(), mode },
+        _ => Choice::Keep,
     }
 }
 
@@ -304,6 +361,10 @@ fn ready(existing: &Existing) -> Value {
         "desktopShortcut": options.shortcuts.desktop,
         "startMenuShortcut": options.shortcuts.start_menu,
         "startAtSignIn": options.start_at_sign_in,
+        // On for a first install, and as it was for one before.
+        "skill": existing.skill.is_some() || existing.version.is_none(),
+        "skillInstalled": existing.skill.is_some(),
+        "skillMode": existing.skill.unwrap_or_default().name(),
     })
 }
 
@@ -334,6 +395,7 @@ mod tests {
         let existing = Existing {
             version: Some("0.1.0".to_owned()),
             has_stores: true,
+            skill: Some(Mode::Copy),
             options: Options {
                 lan: true,
                 shortcuts: Shortcuts { desktop: false, start_menu: true },
@@ -351,6 +413,26 @@ mod tests {
         let script = include_str!("../ui/setup.js");
         for name in ["lan", "desktopShortcut", "startMenuShortcut", "startAtSignIn"] {
             assert!(told[name].is_boolean() && script.contains(&format!("{name}: element(")), "{name}");
+        }
+        assert_eq!((&told["skill"], &told["skillMode"]), (&json!(true), &json!("copy")));
+        for name in ["skill", "skillInstalled", "skillMode"] {
+            assert!(script.contains(&format!("found.{name}")), "{name}");
+        }
+    }
+
+    #[test]
+    fn the_skill_is_installed_for_the_agents_chosen_or_removed_or_left() {
+        let chose = |skill: Value| chosen(&json!({ "skill": skill })).skill;
+        let agents = vec!["claude-code".to_owned()];
+        let install = Choice::Install { agents, mode: Mode::Symlink };
+        assert_eq!(chose(json!({ "agents": ["claude-code"], "mode": "symlink" })), install);
+        assert_eq!(
+            chose(json!({ "agents": [], "mode": "copy" })),
+            Choice::Install { agents: vec![], mode: Mode::Copy }
+        );
+        assert_eq!(chose(json!(false)), Choice::Remove);
+        for left in [json!(null), json!(true), json!({ "agents": ["codex"] }), json!({ "mode": "copy" })] {
+            assert_eq!(chose(left.clone()), Choice::Keep, "{left}");
         }
     }
 }

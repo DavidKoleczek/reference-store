@@ -467,7 +467,37 @@ export type WindowsApp = {
   /** Whether the server is started on the local network. */
   lan: boolean;
   start_at_sign_in: boolean;
+  /** Its Agent Skill, when it is installed. */
+  skill: {
+    /** The agents it is for, as the skills CLI names them. */
+    agents: string[];
+    mode: SkillMode;
+  } | null;
 };
+
+/** An agent the skills CLI knows, which the Agent Skill can be installed for. */
+export type SkillAgent = {
+  id: string;
+  name: string;
+  /** Where it reads its skills from. */
+  folder: string;
+  /** Whether it reads the shared folder, which always has the skill. */
+  shares: boolean;
+  /** Whether it is on this computer. */
+  detected: boolean;
+};
+
+export type SkillAgents = {
+  /** The user's folder, which the agents' folders are in. */
+  home: string;
+  shared: string;
+  agents: SkillAgent[];
+  /** The ids of the agents on this computer that have the skill. */
+  installed: string[];
+};
+
+/** How an agent with a folder of its own gets the skill: a link to the shared copy, or a copy of its own. */
+export type SkillMode = "symlink" | "copy";
 
 /** Null when the server was started any other way. Only a page on the machine itself may ask. */
 export async function readWindowsApp(): Promise<WindowsApp | null> {
@@ -485,3 +515,12 @@ export const checkForUpdate = () => call<WindowsApp>("check_for_update");
 
 /** Ends the server once the newer version is downloaded, and starts the new one on the same port. */
 export const installUpdate = () => call<WindowsApp>("install_update");
+
+/** The first time, the Windows app gets the skills CLI first, which can take a minute. */
+export const listSkillAgents = () => call<SkillAgents>("list_skill_agents");
+
+/** Installs the skill in the shared folder and for these agents, and takes it from the others. */
+export const installSkill = (agents: string[], mode: SkillMode) =>
+  call<WindowsApp>("install_skill", { agents, mode });
+
+export const removeSkill = () => call<WindowsApp>("remove_skill");

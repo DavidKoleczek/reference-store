@@ -14,15 +14,16 @@ Setup asks a few things:
 - Available on local network: lets a phone open the app, and is off to begin with. See [On the local network](01-library.md#on-the-local-network).
 - Desktop shortcut and Start menu shortcut.
 - Start when I sign in: off to begin with.
+- Agent Skill: on to begin with. Next, it lists the agents the [skills CLI](https://github.com/vercel-labs/skills) knows, with the ones on this computer ticked. The skill goes in `~\.agents\skills`, which many agents read, and each agent ticked that has a folder of its own gets a link to it there, or a copy.
 
 Then it installs:
 
 1. Git, when it is missing, with winget or else the Git for Windows installer, which may ask for an administrator. Only stores on GitHub need git, so setup carries on if this fails.
 1. uv, when it is missing, with [Astral's install script](https://docs.astral.sh/uv/getting-started/installation/).
 1. The tool, with `uv tool install`. `reference-store` is on `PATH` as it is when installed by hand, and a tool that was installed by hand is replaced.
-1. The first store, the shortcuts, and the entry in Windows' installed apps.
+1. The first store, the Agent Skill, the shortcuts, and the entry in Windows' installed apps.
 
-It doesn't install the Agent Skill, so run `npx skills add DavidKoleczek/reference-store` as well.
+The skill is the one that comes with this version of the tool. The skills CLI installs it, run on the Node that is installed when it is new enough. Otherwise Node is downloaded from nodejs.org, checked against the SHA-256 the exe was built with, and deleted once the skill is in.
 
 Opening the exe again shows what is installed, and installs again with whatever is chosen then.
 
@@ -40,13 +41,13 @@ Clicking the icon opens the app in the browser. Its menu has:
 - Check for updates
 - Quit: stops serving the app.
 
-The two switches and the update are also in the app's settings menu, on this computer only.
+The two switches, the update, and the agents the skill is installed for are also in the app's settings menu, on this computer only.
 
 ## Updates
 
 The app asks GitHub for the newest release when it starts and once a day, and sends nothing but its own name and version. When there is a newer one, nothing pops up. The tray icon and the settings button get a dot, and both menus offer the update.
 
-Update downloads the new `ReferenceStoreSetup.exe`, checks it against the SHA-256 GitHub publishes for it, and runs it. That installs over the app as it was set up, updates the tool, and starts the app again.
+Update downloads the new `ReferenceStoreSetup.exe`, checks it against the SHA-256 GitHub publishes for it, and runs it. That installs over the app as it was set up, updates the tool and the skill, and starts the app again.
 
 The tool's version comes with the app, so `uv tool upgrade` finds nothing to upgrade.
 
@@ -55,10 +56,11 @@ The tool's version comes with the app, so `uv tool upgrade` finds nothing to upg
 Files:
 
 - `%LOCALAPPDATA%\Programs\Reference Store\ReferenceStore.exe`: the app, which is the same exe as setup.
-- `%LOCALAPPDATA%\Reference Store`: the tool's wheel, downloaded updates, and the setup window's browser data.
+- `%LOCALAPPDATA%\Reference Store`: the tool's wheel, downloaded updates, the setup window's browser data, and where the skill went.
 - `%APPDATA%\reference-store\desktop.json`: beside the tool's own [configuration](01-library.md#configuration).
 - The shortcuts, on the desktop and in the Start menu.
 - The tool, where uv keeps its tools. uv fetches Python for it when it has none that fits.
+- The Agent Skill, in `~\.agents\skills\reference-store`, and linked or copied into the folders of the agents chosen.
 
 Registry, all under `HKEY_CURRENT_USER`:
 
@@ -69,7 +71,7 @@ uv adds its folders to the user's `PATH`, and Git's installer makes its own chan
 
 ## Uninstall
 
-Uninstall Reference Store from Windows' installed apps. That removes the app, the tool, the shortcuts, and the registry entries.
+Uninstall Reference Store from Windows' installed apps. That removes the app, the tool, the Agent Skill, the shortcuts, and the registry entries.
 
 It keeps the stores, everything in `%APPDATA%\reference-store`, uv with its Python, and git.
 
@@ -81,6 +83,6 @@ ReferenceStoreSetup.exe --install [--store <folder>] [--local-network] [--deskto
 ReferenceStoreSetup.exe --uninstall [--quiet]
 ```
 
-`--install` asks nothing and installs with what the options name, so a shortcut that isn't named isn't made. `--store` names the first store, and with stores there already it makes that folder the default when it is one of them. `--uninstall` asks first, unless `--quiet`.
+`--install` asks nothing and installs with what the options name, so a shortcut that isn't named isn't made. `--store` names the first store, and with stores there already it makes that folder the default when it is one of them. The Agent Skill is updated where it is installed, and isn't installed otherwise. `--uninstall` asks first, unless `--quiet`.
 
 In PowerShell, add `| Out-Host` to wait for the exe and see what it prints.

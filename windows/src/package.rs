@@ -11,6 +11,8 @@ pub const WHEEL: &[u8] = include_bytes!(env!("WHEEL_PATH"));
 pub const CONSTRAINTS: &str = include_str!(env!("CONSTRAINTS_PATH"));
 /// The Python the tool was tested on.
 pub const PYTHON_VERSION: &str = env!("PYTHON_VERSION");
+/// The tool's Agent Skill, which tells an agent how to use it.
+pub const SKILL: &str = include_str!(env!("SKILL_PATH"));
 
 #[cfg(test)]
 mod tests {
@@ -28,6 +30,14 @@ mod tests {
         assert!(CONSTRAINTS.lines().any(|line| line.starts_with("fastapi==")));
         assert!(CONSTRAINTS.lines().all(|line| line.contains("==")));
         assert!(!CONSTRAINTS.contains("reference-store"));
+    }
+
+    #[test]
+    fn the_skill_is_all_of_its_folder() {
+        assert!(SKILL.starts_with("---") && SKILL.contains("name: reference-store"));
+        let folder = std::path::Path::new(env!("SKILL_PATH")).parent().unwrap();
+        // The exe carries the one file, so another beside it would be left out of what is installed.
+        assert_eq!(std::fs::read_dir(folder).unwrap().count(), 1);
     }
 
     #[test]

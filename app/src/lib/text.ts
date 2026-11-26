@@ -312,6 +312,38 @@ export const TEXT = {
       up: (store: string) => `Move ${store} up`,
       down: (store: string) => `Move ${store} down`,
     },
+    /** The agents to install the Windows app's Agent Skill for, as the skills CLI lists them. */
+    skill: {
+      title: "Agent Skill",
+      about:
+        "Teaches your agents to save and find references. It goes in your user folder, so it works in every project.",
+      finding: "Finding your agents...",
+      findingLong:
+        "Finding your agents. The first time, this gets the skills CLI, and Node.js too when it isn't installed.",
+      notFound:
+        "The agents couldn't be listed. The skills CLI may still be getting ready, so try again in a moment.",
+      tryAgain: "Try again",
+      agents: "Agents",
+      filter: "Filter agents",
+      shared: "Universal",
+      always: "Always",
+      sharedBy: (names: string[], more: number) =>
+        more > 0 ? `${names.join(", ")}, and ${more} more` : names.join(", "),
+      found: "Found",
+      installed: "Installed",
+      noMatch: "No agent has that name.",
+      method: "Method",
+      symlink: "Symlink (Recommended)",
+      copy: "Copy",
+      symlinkHelp:
+        "One copy in the shared folder, which each agent's own folder links to.",
+      copyHelp: "A copy of its own in each agent's folder.",
+      nothingToLink:
+        "Nothing to link: every agent chosen reads the shared folder.",
+      remove: "Remove",
+      install: "Install",
+      save: "Save",
+    },
   },
 
   /** What a store says beside its name, and why it can't be picked or changed. */
@@ -385,6 +417,14 @@ export const TEXT = {
     onLocalNetworkHelp:
       "Lets a phone open the app. It is plain HTTP, so only on a network you trust.",
     startAtSignIn: "Start when I sign in",
+    skill: "Agent Skill",
+    skillFor: (names: string[]) =>
+      names.length > 2
+        ? `For ${names[0]}, ${names[1]}, and ${names.length - 2} more`
+        : `For ${names.join(" and ")}`,
+    skillAbout: "Teaches your agents to save and find references.",
+    changeSkill: "Change",
+    installSkill: "Install",
     restarting: "Restarting...",
     checkForUpdates: "Check for updates",
     checking: "Checking...",

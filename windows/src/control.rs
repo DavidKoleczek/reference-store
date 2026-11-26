@@ -11,6 +11,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use crate::failure::{Failure, OrSay, Outcome};
+use crate::skill::Mode;
 use crate::win32;
 
 /// The variables the server is told the port and the token in.
@@ -20,11 +21,11 @@ const TOKEN_BYTES: usize = 32;
 // Far past the longest request there is.
 const REQUEST_LIMIT: u64 = 4096;
 const REQUEST_PATIENCE: Duration = Duration::from_secs(5);
-// Looking for an update is the longest thing asked, and takes as long as GitHub does to answer.
-const ANSWER_PATIENCE: Duration = Duration::from_mins(2);
+// Getting the skills CLI ready, which can mean downloading Node, is the longest thing asked.
+const ANSWER_PATIENCE: Duration = Duration::from_mins(5);
 
 /// What the browser app asks.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     State,
     /// Change the settings that are given, and leave the others.
@@ -34,6 +35,14 @@ pub enum Request {
     },
     CheckForUpdate,
     InstallUpdate,
+    /// List the agents the Agent Skill can be installed for.
+    ListAgents,
+    /// Install the Agent Skill in the shared folder and for these agents, and take it from the others.
+    InstallSkill {
+        agents: Vec<String>,
+        mode: Mode,
+    },
+    RemoveSkill,
 }
 
 /// What the app is like now, as the browser app shows it.
@@ -45,10 +54,28 @@ pub struct State {
     pub updating: bool,
     pub lan: bool,
     pub start_at_sign_in: bool,
+    pub skill: Option<Skill>,
 }
 
-/// Where a request is answered: with what the app is like once it has done what was asked, or why it couldn't.
-pub type Answer = Sender<Outcome<State>>;
+/// The Agent Skill, when it is installed.
+#[derive(Debug)]
+pub struct Skill {
+    /// The agents it is for, as the skills CLI names them.
+    pub agents: Vec<String>,
+    pub mode: Mode,
+}
+
+/// What a request is answered with.
+#[derive(Debug)]
+pub enum Reply {
+    /// What the app is like once it has done what was asked.
+    State(State),
+    /// The agents, as the skills CLI lists them.
+    Agents(Value),
+}
+
+/// Where a request is answered: with its reply, or why it couldn't be done.
+pub type Answer = Sender<Outcome<Reply>>;
 
 /// The app's ear for the browser app, which listens for as long as this exe runs.
 pub struct Control {
@@ -110,7 +137,21 @@ fn parse(line: &str, token: &str) -> Outcome<Request> {
         }
         Some("check_for_update") => Ok(Request::CheckForUpdate),
         Some("install_update") => Ok(Request::InstallUpdate),
-        _ => Err(Failure::new("The app can be asked: state, set, check_for_update, install_update.")),
+        Some("list_agents") => Ok(Request::ListAgents),
+        Some("install_skill") => {
+            let agents: Option<Vec<String>> = asked["agents"]
+                .as_array()
+                .map(|agents| agents.iter().filter_map(Value::as_str).map(str::to_owned).collect());
+            match (agents, asked["mode"].as_str().and_then(Mode::from_name)) {
+                (Some(agents), Some(mode)) => Ok(Request::InstallSkill { agents, mode }),
+                _ => Err(Failure::new("install_skill takes the agents, and a mode of symlink or copy.")),
+            }
+        }
+        Some("remove_skill") => Ok(Request::RemoveSkill),
+        _ => Err(Failure::new(
+            "The app can be asked: state, set, check_for_update, install_update, list_agents, install_skill, \
+             remove_skill.",
+        )),
     }
 }
 
@@ -120,9 +161,9 @@ fn is_same(given: &str, token: &str) -> bool {
         && given.bytes().zip(token.bytes()).fold(0, |differing, (one, other)| differing | (one ^ other)) == 0
 }
 
-fn to_json(outcome: &Outcome<State>) -> Value {
+fn to_json(outcome: &Outcome<Reply>) -> Value {
     match outcome {
-        Ok(state) => json!({
+        Ok(Reply::State(state)) => json!({
             "ok": true,
             "state": {
                 "version": state.version,
@@ -130,8 +171,10 @@ fn to_json(outcome: &Outcome<State>) -> Value {
                 "updating": state.updating,
                 "lan": state.lan,
                 "start_at_sign_in": state.start_at_sign_in,
+                "skill": state.skill.as_ref().map(|skill| json!({ "agents": skill.agents, "mode": skill.mode.name() })),
             },
         }),
+        Ok(Reply::Agents(agents)) => json!({ "ok": true, "agents": agents }),
         Err(failure) => json!({ "ok": false, "error": failure.to_string() }),
     }
 }
@@ -155,6 +198,25 @@ mod tests {
         assert_eq!(set, Request::Set { lan: None, start_at_sign_in: Some(false) });
         assert_eq!(asked(r#"{"token": "0f1e2d3c", "do": "check_for_update"}"#).unwrap(), Request::CheckForUpdate);
         assert_eq!(asked(r#"{"token": "0f1e2d3c", "do": "install_update"}"#).unwrap(), Request::InstallUpdate);
+        assert_eq!(asked(r#"{"token": "0f1e2d3c", "do": "list_agents"}"#).unwrap(), Request::ListAgents);
+        let install =
+            asked(r#"{"token": "0f1e2d3c", "do": "install_skill", "agents": ["claude-code"], "mode": "copy"}"#);
+        assert_eq!(
+            install.unwrap(),
+            Request::InstallSkill { agents: vec!["claude-code".to_owned()], mode: Mode::Copy }
+        );
+        assert_eq!(asked(r#"{"token": "0f1e2d3c", "do": "remove_skill"}"#).unwrap(), Request::RemoveSkill);
+    }
+
+    #[test]
+    fn installing_the_skill_needs_its_agents_and_how() {
+        for line in [
+            r#"{"token": "0f1e2d3c", "do": "install_skill", "agents": ["codex"]}"#,
+            r#"{"token": "0f1e2d3c", "do": "install_skill", "mode": "symlink"}"#,
+            r#"{"token": "0f1e2d3c", "do": "install_skill", "agents": [], "mode": "hardlink"}"#,
+        ] {
+            assert!(asked(line).unwrap_err().to_string().contains("install_skill takes"), "{line}");
+        }
     }
 
     #[test]
@@ -186,11 +248,15 @@ mod tests {
             updating: false,
             lan: true,
             start_at_sign_in: false,
+            skill: Some(Skill { agents: vec!["Claude Code".to_owned()], mode: Mode::Symlink }),
         };
-        let answer = to_json(&Ok(state));
+        let answer = to_json(&Ok(Reply::State(state)));
         assert_eq!(answer["ok"], true);
         assert_eq!(answer["state"]["update"], "0.2.0");
         assert_eq!((&answer["state"]["lan"], &answer["state"]["start_at_sign_in"]), (&json!(true), &json!(false)));
+        assert_eq!(answer["state"]["skill"], json!({ "agents": ["Claude Code"], "mode": "symlink" }));
+        let answer = to_json(&Ok(Reply::Agents(json!({ "agents": [] }))));
+        assert_eq!(answer, json!({ "ok": true, "agents": { "agents": [] } }));
         let answer = to_json(&Err(Failure::new("There is no newer version.")));
         assert_eq!(answer, json!({ "ok": false, "error": "There is no newer version." }));
         // One line, which is where whoever asked stops reading.
@@ -201,8 +267,9 @@ mod tests {
     fn the_server_is_answered_over_the_port_it_is_told() {
         let control = Control::start(|request, answer| {
             let lan = matches!(request, Request::Set { lan: Some(true), .. });
-            let state = State { version: "0.1.0", update: None, updating: false, lan, start_at_sign_in: false };
-            answer.send(Ok(state)).unwrap();
+            let state =
+                State { version: "0.1.0", update: None, updating: false, lan, start_at_sign_in: false, skill: None };
+            answer.send(Ok(Reply::State(state))).unwrap();
         })
         .unwrap();
         let [(_, port), (_, token)] = control.environment();

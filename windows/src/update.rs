@@ -104,7 +104,7 @@ fn githubs_latest_release(repository: &str) -> String {
 }
 
 /// Fetches an address, which outside a sandbox has to be an HTTPS one.
-fn get(url: &str, limit: usize, paths: &Paths) -> Outcome<(u32, Vec<u8>)> {
+pub fn get(url: &str, limit: usize, paths: &Paths) -> Outcome<(u32, Vec<u8>)> {
     let address = address(url)
         .filter(|address| address.secure || paths.is_sandbox())
         .ok_or_else(|| Failure::new(format!("{url} isn't an address an update can come from.")))?;

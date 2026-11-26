@@ -8,6 +8,7 @@ mod control;
 mod failure;
 mod install;
 mod instance;
+mod node;
 mod package;
 mod paths;
 mod prerequisites;
@@ -15,6 +16,7 @@ mod run;
 mod server;
 mod settings;
 mod setup;
+mod skill;
 mod startup;
 mod tool;
 mod tray;
@@ -48,7 +50,7 @@ fn run() -> Outcome<()> {
         Command::Open if install::is_installed(&paths) => tray::run(&paths, true).inspect_err(show),
         Command::Open => setup::run(&paths, Purpose::Install).inspect_err(show),
         Command::Background => tray::run(&paths, false).inspect_err(show),
-        Command::Install(options) => install::install(&options, &paths, &mut print),
+        Command::Install(options) => install::install(&options, None, &paths, &mut print),
         Command::Update => setup::run(&paths, Purpose::Update).inspect_err(show),
         Command::Uninstall { quiet: true } => install::uninstall(&paths, &mut print),
         Command::Uninstall { quiet: false } => {

@@ -16,7 +16,7 @@ ReferenceStoreSetup.exe --background
 ReferenceStoreSetup.exe --install [--store <folder>] [--local-network] [--desktop-shortcut] [--start-menu-shortcut]
         [--start-at-sign-in]
     Install without asking anything, with git and uv when they are missing. The folder becomes the first store, when
-    there is none, and the default when it is a store already.
+    there is none, and the default when it is a store already. The Agent Skill is updated where it is installed.
 ReferenceStoreSetup.exe --update
     Install this exe over the installed app as that one was set up, and start the app again. The app does this with
     a newer exe it has downloaded.
@@ -115,6 +115,7 @@ mod tests {
             lan: true,
             shortcuts: Shortcuts { desktop: true, start_menu: false },
             start_at_sign_in: true,
+            ..Options::default()
         };
         assert_eq!(command, Command::Install(options));
         assert_eq!(parsed(&["--install"]).unwrap(), Command::Install(Options::default()));

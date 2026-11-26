@@ -1,5 +1,6 @@
-//! Makes what the exe carries: the tool's wheel with its dependencies pinned, the icon, and what Windows shows about
-//! the exe. The version, the wheel, and the icon all come from the repository, so nothing is kept in step by hand.
+//! Makes what the exe carries: the tool's wheel with its dependencies pinned, its Agent Skill, the icon, and what
+//! Windows shows about the exe. The version, the wheel, the skill, and the icon all come from the repository, so
+//! nothing is kept in step by hand.
 
 use std::error::Error;
 use std::ffi::OsStr;
@@ -25,6 +26,8 @@ const DOT_GAP: f32 = 0.07;
 // The app's accent color.
 const DOT_COLOR: [u8; 3] = [0xf4, 0xc5, 0x42];
 const PYTHON_VERSION: &str = ".python-version";
+// The tool's Agent Skill, which the wheel carries too.
+const SKILL: &str = "src/reference_store/skill/reference-store/SKILL.md";
 // What the wheel and its pins are made from.
 const WHEEL_SOURCES: [&str; 5] = ["pyproject.toml", "uv.lock", "README.md", "LICENSE", "src"];
 
@@ -48,6 +51,7 @@ fn main() -> Outcome<()> {
     // The Python the tool is developed on, which is the one it is installed on.
     let python = fs::read_to_string(repository.join(PYTHON_VERSION))?;
     println!("cargo:rustc-env=PYTHON_VERSION={}", python.trim());
+    println!("cargo:rustc-env=SKILL_PATH={}", repository.join(SKILL).display());
 
     let wheel = build_wheel(repository, &out.join("wheel"))?;
     let wheel_name = wheel.file_name().and_then(OsStr::to_str).ok_or("The wheel has no name.")?;

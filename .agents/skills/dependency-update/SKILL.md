@@ -1,6 +1,6 @@
 ---
 name: dependency-update
-description: Run this to update the Python, app, and Windows app dependencies, and the release workflow's actions, to the newest versions the cooldown allows.
+description: Run this to update the Python, app, Windows app dependencies, and the release workflow, to the newest versions the cooldown allows.
 disable-model-invocation: true
 metadata:
   internal: true
@@ -66,6 +66,13 @@ Run these on Windows, since the crate only builds there.
    ```
 
    For each crate published less than 5 days ago it prints the `cargo update --precise` command that steps it back to its newest release that is old enough. Run those in `windows/`, then run the check again until it lists none.
+1. `windows/skills/package.json` pins the skills CLI, whose library installs the Agent Skill. Find its newest release that is at least 5 days old with `npm view skills time --json`, and read the release notes since the pinned one for changes to what `windows/skills/skills.mjs` uses. Set that version, then refresh the lock from `windows/skills/` so its dependencies keep the same cooldown:
+
+   ```bash
+   npm install --package-lock-only --ignore-scripts --no-audit --no-fund --before="$(date -u -d '5 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+   ```
+
+1. `windows/skills/node.json` pins the Node downloaded when the one installed is too old for the skills CLI. Take the newest LTS release that is at least 5 days old from `https://nodejs.org/dist/index.json`, and the SHA-256 of its `node-v<version>-win-x64.zip` from `https://nodejs.org/dist/v<version>/SHASUMS256.txt`.
 1. Run `uv run build-windows.py`. It formats, lints, tests, and builds the exe.
 1. Run `uv run setup-for-dev.py`. `tao`, `tray-icon`, and `wry` are cloned in `reference/` at the versions `windows/Cargo.lock` has, and this moves each clone to the version the lock has now.
 

@@ -12,6 +12,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CopyPath } from "@/components/CopyPath";
+import { SkillDialog } from "@/components/SkillDialog";
 import { ToolError, type WindowsApp } from "@/lib/api";
 import { APP_NAME, DOCUMENTATION, VERSION } from "@/lib/brand";
 import { app } from "@/lib/host";
@@ -50,8 +51,14 @@ function refusal(cause: unknown): string | null {
   return cause instanceof ToolError ? cause.message : null;
 }
 
-/** The settings the Windows app keeps, since they are about how the server is started. */
-function ThisComputer({ windowsApp }: { windowsApp: WindowsApp }) {
+/** The settings the Windows app keeps, since they are about how the server is started, and its Agent Skill. */
+function ThisComputer({
+  windowsApp,
+  onChooseSkill,
+}: {
+  windowsApp: WindowsApp;
+  onChooseSkill: () => void;
+}) {
   const [restarting, setRestarting] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -90,6 +97,21 @@ function ThisComputer({ windowsApp }: { windowsApp: WindowsApp }) {
       >
         {TEXT.settings.startAtSignIn}
       </Switch>
+      <div className="mt-1.5 flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-label">{TEXT.settings.skill}</p>
+          <p className="text-caption text-ink-muted">
+            {windowsApp.skill
+              ? TEXT.settings.skillFor(windowsApp.skill.agents)
+              : TEXT.settings.skillAbout}
+          </p>
+        </div>
+        <Button variant="secondary" size="sm" onClick={onChooseSkill}>
+          {windowsApp.skill
+            ? TEXT.settings.changeSkill
+            : TEXT.settings.installSkill}
+        </Button>
+      </div>
       {restarting && (
         <p role="status" className="mt-1 text-label text-ink-muted">
           {TEXT.settings.restarting}
@@ -175,93 +197,117 @@ export function SettingsMenu() {
   const newer = windowsApp?.update ?? null;
   const title =
     newer === null ? TEXT.settings.title : TEXT.settings.titleWithUpdate(newer);
+  const [open, setOpen] = useState(false);
+  // Outside the menu, which closes as the dialog opens.
+  const [choosingSkill, setChoosingSkill] = useState(false);
 
   return (
-    <Popover
-      onOpenChange={(open) => {
-        // It changes from its own menu too.
-        if (open && windowsApp) {
-          void refreshWindowsApp();
-        }
-      }}
-    >
-      <Tooltip content={title}>
-        <PopoverTrigger
-          render={
-            <Button size="sm" icon aria-label={title} className="relative" />
+    <>
+      <Popover
+        open={open}
+        onOpenChange={(opening) => {
+          setOpen(opening);
+          // It changes from its own menu too.
+          if (opening && windowsApp) {
+            void refreshWindowsApp();
           }
-        >
-          <Icon name="sliders" />
-          {newer !== null && (
-            <span className="absolute top-0 right-0 size-1.5 rounded-full bg-accent" />
-          )}
-        </PopoverTrigger>
-      </Tooltip>
-      <PopoverContent label={TEXT.settings.title} className="w-75">
-        <Section label={TEXT.settings.theme}>
-          <Segmented
-            label={TEXT.settings.theme}
-            size="sm"
-            full
-            value={theme}
-            onChange={(theme) => changeSettings({ theme })}
-            options={[
-              { value: "system", label: TEXT.settings.system, icon: "monitor" },
-              { value: "light", label: TEXT.settings.light, icon: "sun" },
-              { value: "dark", label: TEXT.settings.dark, icon: "moon" },
-            ]}
-          />
-        </Section>
-        {windowsApp && (
-          <>
-            <hr className="-mx-1 my-1 border-line" />
-            <ThisComputer windowsApp={windowsApp} />
-          </>
-        )}
-        {lanUrl && (
-          <>
-            <hr className="-mx-1 my-1 border-line" />
-            <Section label={TEXT.settings.localNetwork}>
-              {code && (
-                <img
-                  src={code}
-                  alt={TEXT.settings.qrCode(lanUrl)}
-                  className="bg-white mx-auto mb-2 size-44 rounded-sm"
-                />
-              )}
-              <p className="mb-2 mono-annotation break-all text-ink-muted">
-                {lanUrl}
-              </p>
-              <CopyPath
-                path={lanUrl}
-                label={TEXT.settings.copyAddress}
-                size="sm"
+        }}
+      >
+        <Tooltip content={title}>
+          <PopoverTrigger
+            render={
+              <Button size="sm" icon aria-label={title} className="relative" />
+            }
+          >
+            <Icon name="sliders" />
+            {newer !== null && (
+              <span className="absolute top-0 right-0 size-1.5 rounded-full bg-accent" />
+            )}
+          </PopoverTrigger>
+        </Tooltip>
+        <PopoverContent label={TEXT.settings.title} className="w-75">
+          <Section label={TEXT.settings.theme}>
+            <Segmented
+              label={TEXT.settings.theme}
+              size="sm"
+              full
+              value={theme}
+              onChange={(theme) => changeSettings({ theme })}
+              options={[
+                {
+                  value: "system",
+                  label: TEXT.settings.system,
+                  icon: "monitor",
+                },
+                { value: "light", label: TEXT.settings.light, icon: "sun" },
+                { value: "dark", label: TEXT.settings.dark, icon: "moon" },
+              ]}
+            />
+          </Section>
+          {windowsApp && (
+            <>
+              <hr className="-mx-1 my-1 border-line" />
+              <ThisComputer
+                windowsApp={windowsApp}
+                onChooseSkill={() => {
+                  setOpen(false);
+                  setChoosingSkill(true);
+                }}
               />
-            </Section>
-          </>
-        )}
-        {documentation && (
-          <>
-            <hr className="-mx-1 my-1 border-line" />
-            <button
-              type="button"
-              className={ROW}
-              onClick={() => void app.openLink({ url: documentation })}
-            >
-              <span className="flex-1">{TEXT.settings.documentation}</span>
-              <Icon name="link-out" className="text-ink-muted" />
-            </button>
-          </>
-        )}
-        <hr className="-mx-1 my-1 border-line" />
-        {windowsApp ? (
-          <Update windowsApp={windowsApp} />
-        ) : (
-          <p className="flex h-6 items-center px-2 mono-annotation text-ink-muted">
-            {VERSION_LABEL}
-          </p>
-        )}
-      </PopoverContent>
-    </Popover>
+            </>
+          )}
+          {lanUrl && (
+            <>
+              <hr className="-mx-1 my-1 border-line" />
+              <Section label={TEXT.settings.localNetwork}>
+                {code && (
+                  <img
+                    src={code}
+                    alt={TEXT.settings.qrCode(lanUrl)}
+                    className="bg-white mx-auto mb-2 size-44 rounded-sm"
+                  />
+                )}
+                <p className="mb-2 mono-annotation break-all text-ink-muted">
+                  {lanUrl}
+                </p>
+                <CopyPath
+                  path={lanUrl}
+                  label={TEXT.settings.copyAddress}
+                  size="sm"
+                />
+              </Section>
+            </>
+          )}
+          {documentation && (
+            <>
+              <hr className="-mx-1 my-1 border-line" />
+              <button
+                type="button"
+                className={ROW}
+                onClick={() => void app.openLink({ url: documentation })}
+              >
+                <span className="flex-1">{TEXT.settings.documentation}</span>
+                <Icon name="link-out" className="text-ink-muted" />
+              </button>
+            </>
+          )}
+          <hr className="-mx-1 my-1 border-line" />
+          {windowsApp ? (
+            <Update windowsApp={windowsApp} />
+          ) : (
+            <p className="flex h-6 items-center px-2 mono-annotation text-ink-muted">
+              {VERSION_LABEL}
+            </p>
+          )}
+        </PopoverContent>
+      </Popover>
+      {choosingSkill && windowsApp && (
+        <SkillDialog
+          installed={windowsApp.skill !== null}
+          installedMode={windowsApp.skill?.mode ?? "symlink"}
+          onClose={() => setChoosingSkill(false)}
+        />
+      )}
+    </>
   );
 }

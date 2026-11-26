@@ -16,8 +16,31 @@ from reference_store.app.known import Known
 from reference_store.app.own_tools import own_tools
 
 TOKEN = "0f1e2d3c4b5a"
-STATE = {"version": "0.1.0", "update": None, "updating": False, "lan": False, "start_at_sign_in": False}
-TOOLS = ["read_windows_app", "change_windows_app", "check_for_update", "install_update"]
+STATE = {"version": "0.1.0", "update": None, "updating": False, "lan": False, "start_at_sign_in": False, "skill": None}
+TOOLS = [
+    "read_windows_app",
+    "change_windows_app",
+    "check_for_update",
+    "install_update",
+    "list_skill_agents",
+    "install_skill",
+    "remove_skill",
+]
+AGENTS = {
+    "home": "C:\\Users\\me",
+    "shared": "C:\\Users\\me\\.agents\\skills",
+    "agents": [
+        {"id": "codex", "name": "Codex", "folder": "C:\\Users\\me\\.agents\\skills", "shares": True, "detected": True},
+        {
+            "id": "claude-code",
+            "name": "Claude Code",
+            "folder": "C:\\Users\\me\\.claude\\skills",
+            "shares": False,
+            "detected": True,
+        },
+    ],
+    "installed": ["codex"],
+}
 
 
 class StandIn:
@@ -75,7 +98,8 @@ async def test_a_server_started_any_other_way_has_no_windows_app(monkeypatch: py
     async with Client(lib.app_server().server) as client:
         assert await call(client, "read_windows_app") == {"windows_app": None}
         for tool in TOOLS[1:]:
-            assert "isn't what started this server" in await refused(client, tool)
+            arguments = {"agents": [], "mode": "symlink"} if tool == "install_skill" else {}
+            assert "isn't what started this server" in await refused(client, tool, **arguments)
 
 
 async def test_the_windows_app_is_read_and_changed_with_its_token(stand_in: StandIn) -> None:
@@ -99,6 +123,33 @@ async def test_the_windows_app_is_read_and_changed_with_its_token(stand_in: Stan
         {"token": TOKEN, "do": "check_for_update"},
         {"token": TOKEN, "do": "install_update"},
     ]
+
+
+async def test_the_agent_skill_is_installed_for_the_agents_listed(stand_in: StandIn) -> None:
+    async with Client(lib.app_server().server) as client:
+        stand_in.answer = {"ok": True, "agents": AGENTS}
+        assert await call(client, "list_skill_agents") == AGENTS
+
+        skill = {"agents": ["Claude Code", "Codex"], "mode": "copy"}
+        stand_in.answer = {"ok": True, "state": {**STATE, "skill": skill}}
+        assert (await call(client, "install_skill", agents=["claude-code"], mode="copy"))["skill"] == skill
+        stand_in.answer = {"ok": True, "state": STATE}
+        assert (await call(client, "remove_skill"))["skill"] is None
+
+        # Only the two ways the skills CLI installs a skill.
+        assert (await client.call_tool("install_skill", {"agents": [], "mode": "hardlink"})).is_error
+
+    assert stand_in.asked == [
+        {"token": TOKEN, "do": "list_agents"},
+        {"token": TOKEN, "do": "install_skill", "agents": ["claude-code"], "mode": "copy"},
+        {"token": TOKEN, "do": "remove_skill"},
+    ]
+
+
+async def test_a_list_of_agents_that_cant_be_read_is_said(stand_in: StandIn) -> None:
+    stand_in.answer = {"ok": True, "agents": {"agents": "all"}}
+    async with Client(lib.app_server().server) as client:
+        assert "couldn't be read" in await refused(client, "list_skill_agents")
 
 
 async def test_what_the_windows_app_cant_do_is_said_in_its_words(stand_in: StandIn) -> None:

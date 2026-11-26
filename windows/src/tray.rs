@@ -1,6 +1,7 @@
 //! The app while it runs: an icon by the clock with a menu, and the server behind it.
 
 use std::io::{self, Write};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 use std::{mem, thread};
 
@@ -10,13 +11,14 @@ use tao::platform::run_return::EventLoopExtRunReturn;
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
-use crate::control::{self, Answer, Control, Request};
+use crate::control::{self, Answer, Control, Reply, Request};
 use crate::failure::{Failure, OrSay, Outcome};
 use crate::instance::{Asked, Instance};
 use crate::package::{APP_NAME, VERSION};
 use crate::paths::Paths;
 use crate::server::{self, Heard, Server};
 use crate::settings::Settings;
+use crate::skill::{self, Kit, Mode, Record};
 use crate::update::{self, Update};
 use crate::{startup, tool, win32};
 
@@ -33,6 +35,11 @@ const CLOCK_LOOK: Duration = Duration::from_mins(10);
 // The browser app is answered before the server it asked through is ended, and the answer takes this long to get
 // to its page.
 const RESTART_DELAY: Duration = Duration::from_millis(400);
+// The skills CLI is kept ready this long after the agents are listed, for the skill to be installed with.
+const KIT_KEPT: Duration = Duration::from_mins(15);
+
+/// The skills CLI, when it is ready, and when it was last used.
+type KeptKit = Arc<Mutex<Option<(Kit, Instant)>>>;
 
 /// What the app is told of, each from a thread other than the one it runs on.
 enum Event {
@@ -57,6 +64,8 @@ enum Event {
     Update,
     /// An update ended with this app still running, so it didn't take place.
     UpdateEnded(Outcome<()>),
+    /// The Agent Skill was installed or removed, as the browser app asked.
+    SkillChanged(Outcome<()>, Answer),
 }
 
 /// Who had a look for a newer version made, which is who is told what it found.
@@ -98,6 +107,7 @@ struct App<'a> {
     /// The newer version there is, as the last look found.
     update: Option<Update>,
     updating: bool,
+    kit: KeptKit,
 }
 
 /// Runs the app until it is quit, with the browser opened on it first if `open`. When the app is running already,
@@ -174,6 +184,7 @@ impl<'a> App<'a> {
             last_click: None,
             update: None,
             updating: false,
+            kit: Arc::default(),
         })
     }
 
@@ -216,6 +227,8 @@ impl<'a> App<'a> {
             Event::Checked { found, looker } => self.checked(found, looker),
             Event::Update => self.install_update(),
             Event::UpdateEnded(outcome) => self.update_ended(outcome),
+            // Whoever asked may have stopped waiting.
+            Event::SkillChanged(outcome, answer) => drop(answer.send(outcome.map(|()| self.reply()))),
             Event::Menu(_) | Event::Icon(_) | Event::Server { .. } => {}
         }
         true
@@ -224,6 +237,10 @@ impl<'a> App<'a> {
     fn end(&mut self) {
         if let Some(server) = self.server.take() {
             server.stop();
+        }
+        // Its folder goes with it, unless it is in use, when the app's next uninstall takes it.
+        if let Ok(mut kit) = self.kit.try_lock() {
+            kit.take();
         }
         // Windows otherwise shows the icon until the pointer next passes over it.
         self.icon = None;
@@ -287,9 +304,40 @@ impl<'a> App<'a> {
                 self.install_update();
                 Ok(())
             }
+            Request::ListAgents => return self.list_agents(answer),
+            Request::InstallSkill { agents, mode } => return self.change_skill(Some((agents, mode)), answer),
+            Request::RemoveSkill => return self.change_skill(None, answer),
         };
         // Whoever asked may have stopped waiting.
-        let _ = answer.send(done.map(|()| self.control_state()));
+        let _ = answer.send(done.map(|()| self.reply()));
+    }
+
+    /// Has the skills CLI list the agents, from a thread of its own, and keeps it ready a while for what comes next.
+    fn list_agents(&self, answer: Answer) {
+        let (kit, paths) = (Arc::clone(&self.kit), self.paths.clone());
+        thread::spawn(move || {
+            let listed = with_kit(&kit, &paths, Kit::agents);
+            drop(answer.send(listed.map(Reply::Agents)));
+            thread::sleep(KIT_KEPT);
+            let mut kept = kit.lock().unwrap_or_else(PoisonError::into_inner);
+            if kept.as_ref().is_some_and(|(_, used)| used.elapsed() >= KIT_KEPT) {
+                kept.take();
+            }
+        });
+    }
+
+    /// Installs the Agent Skill for the agents given, or removes it, from a thread of its own.
+    fn change_skill(&self, install: Option<(Vec<String>, Mode)>, answer: Answer) {
+        let (kit, paths, tell) = (Arc::clone(&self.kit), self.paths.clone(), self.proxy.clone());
+        thread::spawn(move || {
+            let changed = with_kit(&kit, &paths, |kit| match &install {
+                Some((agents, mode)) => kit.install(agents, *mode),
+                None => kit.remove(),
+            });
+            // Nothing needs it until the agents are listed again.
+            kit.lock().unwrap_or_else(PoisonError::into_inner).take();
+            drop(tell.send_event(Event::SkillChanged(changed, answer)));
+        });
     }
 
     fn set_from_browser_app(&mut self, lan: Option<bool>, start_at_sign_in: Option<bool>) -> Outcome<()> {
@@ -310,14 +358,16 @@ impl<'a> App<'a> {
         Ok(())
     }
 
-    fn control_state(&self) -> control::State {
-        control::State {
+    /// What the app is like now, as the browser app is answered.
+    fn reply(&self) -> Reply {
+        Reply::State(control::State {
             version: VERSION,
             update: self.update.as_ref().map(|update| update.version.clone()),
             updating: self.updating,
             lan: self.settings.lan,
             start_at_sign_in: startup::is_on(self.paths),
-        }
+            skill: Record::read(self.paths).map(|record| control::Skill { agents: record.agents, mode: record.mode }),
+        })
     }
 
     fn set_start_at_sign_in(&mut self, on: bool) {
@@ -408,6 +458,7 @@ impl<'a> App<'a> {
             let mut wait = look();
             // The exe that updated the app, and then started it, has ended by now.
             update::clear_downloads(&paths);
+            skill::clear_leftovers(&paths);
             while let Some(patience) = wait {
                 let looked = SystemTime::now();
                 // A clock that has been set back is taken as the wait being over.
@@ -440,7 +491,7 @@ impl<'a> App<'a> {
         }
         match (looker, found) {
             // Whoever asked may have stopped waiting.
-            (Looker::BrowserApp(answer), found) => drop(answer.send(found.map(|()| self.control_state()))),
+            (Looker::BrowserApp(answer), found) => drop(answer.send(found.map(|()| self.reply()))),
             (Looker::Menu, Ok(())) if self.updating => {}
             (Looker::Menu, Ok(())) => self.answer(),
             (Looker::Menu, Err(failure)) => report(&failure),
@@ -532,6 +583,18 @@ impl<'a> App<'a> {
         self.check.set_enabled(!updating);
         self.name_update_item();
     }
+}
+
+/// Runs something with the skills CLI, which is gotten ready first when it isn't. One thing runs with it at a time.
+fn with_kit<T>(kit: &Mutex<Option<(Kit, Instant)>>, paths: &Paths, run: impl FnOnce(&Kit) -> Outcome<T>) -> Outcome<T> {
+    let mut kept = kit.lock().unwrap_or_else(PoisonError::into_inner);
+    let ready = match kept.take() {
+        Some((ready, _)) => ready,
+        None => Kit::prepare(paths, &mut || {})?,
+    };
+    let done = run(&ready);
+    *kept = Some((ready, Instant::now()));
+    done
 }
 
 fn show(url: &str) {

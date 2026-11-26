@@ -14,6 +14,7 @@ use crate::failure::{Failure, OrSay, Outcome};
 use crate::package::{APP_NAME, PUBLISHER, REPOSITORY, VERSION};
 use crate::paths::Paths;
 use crate::settings::Settings;
+use crate::skill::{self, Choice, Kit, Mode, Record};
 use crate::{instance, prerequisites, startup, tool, win32};
 
 const VERSION_VALUE: &str = "DisplayVersion";
@@ -30,6 +31,7 @@ pub struct Options {
     pub lan: bool,
     pub shortcuts: Shortcuts,
     pub start_at_sign_in: bool,
+    pub skill: Choice,
 }
 
 /// Which shortcuts to the app there are to be.
@@ -44,6 +46,8 @@ pub struct Existing {
     /// The version of the app that is installed, if one is.
     pub version: Option<String>,
     pub has_stores: bool,
+    /// How the Agent Skill was installed, if it is.
+    pub skill: Option<Mode>,
     /// The choices that would leave an installed app as it is, or the ones to start from when there is none.
     pub options: Options,
 }
@@ -55,6 +59,9 @@ pub enum Stage {
     InstallTool,
     AddStore,
     UseStore,
+    InstallSkill,
+    UpdateSkill,
+    RemoveSkill,
     InstallApp,
     RemoveTool,
     RemoveApp,
@@ -74,6 +81,9 @@ impl Stage {
             Self::InstallTool => "Installing the tool",
             Self::AddStore => "Adding the store",
             Self::UseStore => "Making the store the default",
+            Self::InstallSkill => "Installing the Agent Skill",
+            Self::UpdateSkill => "Updating the Agent Skill",
+            Self::RemoveSkill => "Removing the Agent Skill",
             Self::InstallApp => "Installing the app and tray icon",
             Self::RemoveTool => "Removing the tool",
             Self::RemoveApp => "Removing the app from Windows",
@@ -96,8 +106,9 @@ impl Existing {
                 start_menu: !installed || shortcut(&paths.start_menu).is_file(),
             },
             start_at_sign_in: startup::is_on(paths),
+            skill: Choice::Keep,
         };
-        Self { version, has_stores, options }
+        Self { version, has_stores, skill: Record::read(paths).map(|record| record.mode), options }
     }
 
     /// Returns the choices that install over the app and leave it as it was set up, which is how it is updated.
@@ -111,10 +122,11 @@ impl Existing {
     }
 }
 
-/// Installs what is missing of git and uv, then the tool and the app, in place of any version already there.
+/// Installs what is missing of git and uv, then the tool, its Agent Skill, and the app, in place of any version
+/// already there. The skills CLI is gotten ready for the skill unless `kit` is it.
 ///
 /// Windows is told of the app last, so an install that fails on the way leaves nothing listed.
-pub fn install(options: &Options, paths: &Paths, report: &mut dyn FnMut(Progress)) -> Outcome<()> {
+pub fn install(options: &Options, kit: Option<Kit>, paths: &Paths, report: &mut dyn FnMut(Progress)) -> Outcome<()> {
     // A running app holds the tool's files and the exe, which are both about to be replaced.
     instance::quit_running(paths)?;
     if prerequisites::find_git().is_none() {
@@ -157,6 +169,28 @@ pub fn install(options: &Options, paths: &Paths, report: &mut dyn FnMut(Progress
         }
     }
 
+    // Agents do without the skill, so the rest of the install goes on without it.
+    let installed = Record::read(paths).is_some();
+    let (done, undone) = match &options.skill {
+        Choice::Keep if installed => {
+            report(Progress::Started(Stage::UpdateSkill));
+            (skill::refresh(paths).map(drop), "wasn't updated")
+        }
+        Choice::Remove if installed => {
+            report(Progress::Started(Stage::RemoveSkill));
+            (skill::remove_installed(paths).map(drop), "wasn't removed")
+        }
+        Choice::Keep | Choice::Remove => (Ok(()), ""),
+        Choice::Install { agents, mode } => {
+            report(Progress::Started(Stage::InstallSkill));
+            let kit = kit.map_or_else(|| Kit::prepare(paths, &mut || {}), Ok);
+            (kit.and_then(|kit| kit.install(agents, *mode)), "wasn't installed everywhere")
+        }
+    };
+    if let Err(failure) = done {
+        report(Progress::Note(format!("The Agent Skill {undone}. The app's settings can try again.\n{failure}")));
+    }
+
     report(Progress::Started(Stage::InstallApp));
     let exe = paths.exe();
     copy_exe(&exe)?;
@@ -178,9 +212,16 @@ pub fn install(options: &Options, paths: &Paths, report: &mut dyn FnMut(Progress
     register(paths, &exe)
 }
 
-/// Removes the tool and the app. The stores and what the tool keeps about them are left alone.
+/// Removes the tool, its Agent Skill, and the app. The stores and what the tool keeps about them are left alone.
 pub fn uninstall(paths: &Paths, report: &mut dyn FnMut(Progress)) -> Outcome<()> {
     instance::quit_running(paths)?;
+    // The skill tells agents to run the tool, which is about to go.
+    if Record::read(paths).is_some() {
+        report(Progress::Started(Stage::RemoveSkill));
+        if let Err(failure) = skill::remove_installed(paths) {
+            report(Progress::Note(format!("The Agent Skill wasn't removed. {failure}")));
+        }
+    }
     report(Progress::Started(Stage::RemoveTool));
     if let Err(failure) = tool::find_uv(paths).and_then(|uv| tool::uninstall(&uv, paths)) {
         report(Progress::Note(format!("The tool wasn't removed. {failure}")));

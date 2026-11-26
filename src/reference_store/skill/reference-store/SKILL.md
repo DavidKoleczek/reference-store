@@ -3,6 +3,8 @@ name: reference-store
 description: >-
   Saves, organizes, and finds references. A reference is anything that we might find useful to come back later to. An article, an image, a collection of images, videos for a particular thing like game, and so forth. Use it to look for a reference that was saved, or to save one. Drive it from the command line as `reference-store`, or from Python through `reference_store.lib`.
 license: MIT
+metadata:
+  version: "0.1.1"
 ---
 
 # Using reference-store

@@ -53,10 +53,55 @@
             <span class="track"><span class="thumb"></span></span>
             <span class="text">Start when I sign in</span>
           </label>
+          <label class="switch">
+            <input id="skill" type="checkbox" role="switch" />
+            <span class="track"><span class="thumb"></span></span>
+            <span class="text">
+              Agent Skill
+              <small>Teaches your agents to save and find references. You choose which agents next.</small>
+            </span>
+          </label>
         </section>
       </main>
       <footer>
         <button id="install" class="button primary" type="submit">Install</button>
+      </footer>
+    </form>
+
+    <form id="agents-view" class="view" hidden>
+      <main>
+        <h1>Which agent(s) to install the skill to?</h1>
+        <p class="loading" id="agents-loading">
+          <span class="working" aria-hidden="true"></span>
+          <span id="agents-loading-text">Finding your agents...</span>
+        </p>
+        <p id="agents-failure" class="notice danger" role="alert" hidden></p>
+        <div id="agents-chosen" hidden>
+          <section class="agents" aria-label="Agents">
+            <input
+              id="filter"
+              class="filter"
+              type="text"
+              placeholder="Filter agents"
+              aria-label="Filter agents"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <div id="agent-list" class="agent-list"></div>
+          </section>
+          <section class="method" id="method">
+            <span class="label" id="method-label">Method</span>
+            <div class="segmented" role="group" aria-labelledby="method-label">
+              <button type="button" data-mode="symlink" aria-pressed="true">Symlink (Recommended)</button>
+              <button type="button" data-mode="copy" aria-pressed="false">Copy</button>
+            </div>
+            <p class="hint" id="method-hint"></p>
+          </section>
+        </div>
+      </main>
+      <footer>
+        <button id="agents-back" class="button secondary" type="button">Back</button>
+        <button id="agents-install" class="button primary" type="submit">Install</button>
       </footer>
     </form>
 
@@ -86,6 +131,18 @@
         </span>
         <span class="label"></span>
       </li>
+    </template>
+
+    <template id="agent">
+      <label class="agent">
+        <input type="checkbox" />
+        <span class="box">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>
+        </span>
+        <span class="who"><span class="name"></span><span class="path"></span></span>
+        <span class="tag"></span>
+        <span class="also" hidden></span>
+      </label>
     </template>
 
     <script src="setup.js"></script>

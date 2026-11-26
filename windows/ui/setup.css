@@ -266,6 +266,11 @@ footer .button {
   background: var(--hover);
 }
 
+.button:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .switches {
   display: flex;
   flex-direction: column;
@@ -343,6 +348,229 @@ footer .button {
   line-height: 14px;
   font-weight: 400;
   letter-spacing: 0.01em;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 24px 0 0;
+  color: var(--ink-muted);
+}
+
+/* The agents to install the skill for: a list with a filter on top that scrolls by itself, as the skills CLI's does. */
+.agents {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.filter {
+  flex: none;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  outline: none;
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: text;
+  user-select: text;
+}
+
+.filter::placeholder {
+  color: var(--ink-faint);
+}
+
+.filter:focus-visible {
+  background: var(--panel);
+}
+
+.agent-list {
+  height: 196px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.agent {
+  /* Holds its hidden checkbox, which would otherwise reach past the list and make the whole page scroll. */
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--ink-muted);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.agent:not(.locked):hover {
+  background: var(--hover);
+}
+
+.agent.locked {
+  cursor: default;
+}
+
+.agent input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent:has(input:checked) {
+  color: var(--ink);
+}
+
+.box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--line-control);
+  border-radius: 3px;
+  background: var(--field);
+}
+
+.box svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--on-accent);
+  stroke-width: 2;
+  stroke-linecap: square;
+  visibility: hidden;
+}
+
+.agent input:checked + .box {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.agent input:checked + .box svg {
+  visibility: visible;
+}
+
+.locked .box {
+  opacity: 0.6;
+}
+
+.agent input:focus-visible + .box {
+  box-shadow: var(--focus-ring);
+}
+
+.who {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.who .name {
+  flex: none;
+}
+
+.who .path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent .also {
+  grid-column: 2 / 4;
+  color: var(--ink-muted);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+.tag {
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.tag:empty {
+  display: none;
+}
+
+.locked .tag {
+  background: var(--field);
+  color: var(--ink-muted);
+}
+
+.divider {
+  margin: 4px 8px;
+  border-top: 1px solid var(--line);
+}
+
+.none {
+  margin: 0;
+  padding: 8px;
+  color: var(--ink-muted);
+}
+
+.method {
+  margin-top: 20px;
+}
+
+.method.disabled .segmented {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--field);
+}
+
+.segmented button {
+  flex: 1;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.segmented button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.segmented button:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
 }
 
 .steps {

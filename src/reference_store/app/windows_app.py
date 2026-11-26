@@ -8,7 +8,7 @@ in one line of JSON that has the token, and answers in one line.
 import json
 import os
 import socket
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ValidationError
 
@@ -18,10 +18,17 @@ PORT_VARIABLE = "REFERENCE_STORE_WINDOWS_APP_PORT"
 TOKEN_VARIABLE = "REFERENCE_STORE_WINDOWS_APP_TOKEN"
 HOST = "127.0.0.1"
 CONNECT_SECONDS = 5
-# Looking for an update takes as long as GitHub does to answer, and the app gives up on it before this does.
-ANSWER_SECONDS = 150
-# Far past the longest answer there is.
-MAX_ANSWER_BYTES = 64 * 1024
+# Getting the skills CLI ready can mean downloading Node, and the app gives up on it before this does.
+ANSWER_SECONDS = 330
+# Far past the longest answer there is, which is the list of agents.
+MAX_ANSWER_BYTES = 256 * 1024
+
+
+class InstalledSkill(BaseModel):
+    """The Windows app's Agent Skill, where it is installed."""
+
+    agents: list[str]  # the agents it is for, as the skills CLI names them
+    mode: Literal["symlink", "copy"]  # how an agent with a folder of its own has it
 
 
 class WindowsApp(BaseModel):
@@ -32,6 +39,26 @@ class WindowsApp(BaseModel):
     updating: bool
     lan: bool  # whether the server is started on the local network
     start_at_sign_in: bool
+    skill: InstalledSkill | None = None  # None when the Agent Skill isn't installed
+
+
+class SkillAgent(BaseModel):
+    """An agent the skills CLI knows, which the Agent Skill can be installed for."""
+
+    id: str
+    name: str
+    folder: str  # where it reads its skills from
+    shares: bool  # whether it reads the shared folder, which always has the skill
+    detected: bool  # whether it is on this computer
+
+
+class SkillAgents(BaseModel):
+    """The agents, as the skills CLI lists them."""
+
+    home: str  # the user's folder, which the agents' folders are in
+    shared: str  # the shared folder
+    agents: list[SkillAgent]
+    installed: list[str]  # the ids of the agents on this computer that have the skill
 
 
 def state() -> WindowsApp | None:
@@ -73,6 +100,39 @@ def install_update() -> WindowsApp:
     return _ask("install_update")
 
 
+def list_agents() -> SkillAgents:
+    """Has the Windows app get the skills CLI ready, which can take a while the first time, and list the agents.
+
+    Raises:
+        ReferenceStoreError: The Windows app isn't what started this server, or the agents couldn't be listed.
+    """
+    answer = _answer("list_agents")
+    try:
+        return SkillAgents.model_validate(answer["agents"])
+    except (KeyError, TypeError, ValidationError):
+        raise ReferenceStoreError("The Windows app's list of agents couldn't be read.") from None
+
+
+def install_skill(agents: list[str], mode: Literal["symlink", "copy"]) -> WindowsApp:
+    """Has the Windows app install the Agent Skill in the shared folder and for these agents, and take it from others.
+
+    `mode` is how an agent with a folder of its own gets it: a link to the shared copy, or a copy of its own.
+
+    Raises:
+        ReferenceStoreError: The Windows app isn't what started this server, or the skill wasn't installed everywhere.
+    """
+    return _ask("install_skill", agents=agents, mode=mode)
+
+
+def remove_skill() -> WindowsApp:
+    """Has the Windows app remove the Agent Skill from every agent.
+
+    Raises:
+        ReferenceStoreError: The Windows app isn't what started this server, or the skill wasn't removed.
+    """
+    return _ask("remove_skill")
+
+
 def _address() -> tuple[int, str] | None:
     """The port the Windows app listens on and its token, or None when it didn't start this server."""
     port, token = os.environ.get(PORT_VARIABLE, ""), os.environ.get(TOKEN_VARIABLE, "")
@@ -80,6 +140,15 @@ def _address() -> tuple[int, str] | None:
 
 
 def _ask(do: str, **more: Any) -> WindowsApp:
+    answer = _answer(do, **more)
+    try:
+        return WindowsApp.model_validate(answer["state"])
+    except (KeyError, TypeError, ValidationError):
+        raise ReferenceStoreError("The Windows app's answer couldn't be read. It may be another version.") from None
+
+
+def _answer(do: str, **more: Any) -> dict[str, Any]:
+    """Asks the Windows app, and returns its answer when it did what was asked."""
     address = _address()
     if address is None:
         raise ReferenceStoreError(
@@ -97,8 +166,10 @@ def _ask(do: str, **more: Any) -> WindowsApp:
         raise ReferenceStoreError(f"The Windows app didn't answer: {error.strerror or error}.") from None
     try:
         answer = json.loads(line)
-        if not answer["ok"]:
-            raise ReferenceStoreError(str(answer["error"]))
-        return WindowsApp.model_validate(answer["state"])
-    except (ValueError, KeyError, TypeError, ValidationError):
+        ok = answer["ok"]
+        error = None if ok else str(answer["error"])
+    except (ValueError, KeyError, TypeError):
         raise ReferenceStoreError("The Windows app's answer couldn't be read. It may be another version.") from None
+    if error is not None:
+        raise ReferenceStoreError(error)
+    return answer
