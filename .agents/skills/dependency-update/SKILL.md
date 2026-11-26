@@ -1,6 +1,6 @@
 ---
 name: dependency-update
-description: Run this to update the Python and app dependencies to the newest versions the cooldown allows.
+description: Run this to update the Python, app, and Windows app dependencies, and the release workflow's actions, to the newest versions the cooldown allows.
 disable-model-invocation: true
 metadata:
   internal: true
@@ -8,7 +8,7 @@ metadata:
 
 # Dependency update
 
-All dependencies have a cooldown time. `exclude-newer = "5 days"` under `[tool.uv]` in `pyproject.toml`, and `minimumReleaseAge: 7200` (minutes) in `app/pnpm-workspace.yaml`.
+All dependencies have a cooldown time. `exclude-newer = "5 days"` under `[tool.uv]` in `pyproject.toml`, and `minimumReleaseAge: 7200` (minutes) in `app/pnpm-workspace.yaml`. Cargo doesn't have a cooldown setting, so `crate-ages.py` beside this skill checks the Windows app's crates against the same 5 days.
 Report every major version upgrade, such as `1.x` to `2.x` or `2.x` to `3.x`, and check whether dependency and peer ranges allow it. Keep the dependency on its current major unless the user approves the upgrade.
 
 ## Python
@@ -52,6 +52,30 @@ Report every major version upgrade, such as `1.x` to `2.x` or `2.x` to `3.x`, an
 1. Run `pnpm --dir app update <package>` for each excluded major, so it still moves to the newest release within its current range.
 1. If `app/package.json` has a `pnpm.overrides` section, make sure each override still matches the updated versions, then run `pnpm --dir app install`.
 1. Run `uv run build-app.py`. It installs, lints, formats, type checks, and compiles both the host page and the view into `src/reference_store/app/static/`. Those compiled files are committed, so they are part of the change.
+
+## Windows app
+
+Run these on Windows, since the crate only builds there.
+
+1. `windows/rust-toolchain.toml` pins Rust. `rustup check` names the newest stable release, and `https://releases.rs` has the date of each. Move the pin to the newest release that is at least 5 days old.
+1. In `windows/`, run `cargo update --dry-run --verbose`. Besides what would move, it lists each crate its range in `Cargo.toml` holds back, with the newer version. Note every direct dependency held back by a major, or by a minor of a `0.x` crate, for the report.
+1. In `windows/`, run `cargo update`. Then run the cooldown check from the repository root:
+
+   ```bash
+   uv run .agents/skills/dependency-update/crate-ages.py windows/Cargo.lock 5
+   ```
+
+   For each crate published less than 5 days ago it prints the `cargo update --precise` command that steps it back to its newest release that is old enough. Run those in `windows/`, then run the check again until it lists none.
+1. Run `uv run build-windows.py`. It formats, lints, tests, and builds the exe.
+1. Run `uv run setup-for-dev.py`. `tao`, `tray-icon`, and `wry` are cloned in `reference/` at the versions `windows/Cargo.lock` has, and this moves each clone to the version the lock has now.
+
+## Release workflow
+
+`.github/workflows/release.yml` pins each action to a commit, with its version in a comment beside it.
+
+1. For each action, find its newest release that is at least 5 days old at `https://github.com/<owner>/<action>/releases`. Read the notes of every release since the pinned one for changes to the inputs the workflow uses.
+1. Find the commit with `git ls-remote --tags https://github.com/<owner>/<action> <tag>`. When a line ending in `^{}` is listed, the commit is that one.
+1. Replace the commit and the version beside it. uv on the runner is the newest one the pinned `setup-uv` has a checksum for, so it moves with that action.
 
 ## Finish
 

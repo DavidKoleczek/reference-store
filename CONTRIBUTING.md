@@ -10,12 +10,13 @@ Install:
 - [uv](https://docs.astral.sh/uv/getting-started/installation/): Manages Python environments
 - [prek](https://github.com/j178/prek): Used for precommit hooks. Install with `uv tool install prek` and update with `uv tool upgrade prek`.
 - [Node.js](https://nodejs.org/) 22+ and [pnpm](https://pnpm.io/installation), only to change the app's frontend.
+- [Rust](https://rustup.rs/), only to change the Windows app.
 
 ### Initial Setup
 
 1. Clone this repository and change into it.
 
-1. Run the setup script (sets up the uv env, precommit hooks, the app's dependencies, and the `reference/` clones):
+1. Run the setup script (sets up the uv env, precommit hooks, the app's dependencies, the Windows app's crates, and the `reference/` clones):
 
    ```bash
    uv run setup-for-dev.py
@@ -119,6 +120,49 @@ Check and compile both into the package, then commit them:
 uv run build-app.py
 ```
 
+### Windows app
+
+`windows/` contains the Windows installer and app.
+The build puts the tool's wheel in the exe, with its dependencies pinned to `uv.lock`. The version comes from `pyproject.toml` and the icon from `app/public/favicon.svg`.
+The setup window's page is plain HTML, CSS, and JavaScript in `windows/ui/`.
+
+Format, lint, test, and build `windows/target/release/ReferenceStoreSetup.exe`:
+
+```bash
+uv run build-windows.py
+```
+
+To try the exe without installing anything for real, set `REFERENCE_STORE_SANDBOX` to a folder. Everything is installed into that folder instead, and the registry entries go to `HKCU\Software\ReferenceStoreSandbox`, which Windows ignores:
+
+```powershell
+$env:REFERENCE_STORE_SANDBOX = "temp\windows-sandbox"
+# Open setup
+windows\target\release\ReferenceStoreSetup.exe
+# Or install without the window. `| Out-Host` makes PowerShell wait for the exe and show what it prints
+windows\target\release\ReferenceStoreSetup.exe --install --store temp\windows-sandbox\store --desktop-shortcut | Out-Host
+# Open the app, which stays in the tray until Quit
+temp\windows-sandbox\install\ReferenceStore.exe
+# Uninstall
+windows\target\release\ReferenceStoreSetup.exe --uninstall --quiet | Out-Host
+```
+
+Without the variable set in that terminal, the same commands install and uninstall for real.
+
+The app looks for a newer version on GitHub. To try an update in the sandbox, set `REFERENCE_STORE_SANDBOX_RELEASE` to an address that answers as GitHub's API does for a repository's latest release.
+
+In VS Code, the `Windows app (sandbox)` launch configuration debugs setup in the sandbox, and `Windows app tray (sandbox)` debugs the app once it is installed there.
+
+### Releases
+
+A release is made when the version changes on main. Bump it, commit `pyproject.toml` and `uv.lock`, and push:
+
+```bash
+uv version --bump patch
+```
+
+The Release workflow runs the checks, builds `ReferenceStoreSetup.exe`, and publishes it as the release `v<version>`. Installed apps offer the update within a day.
+It can also be run by hand from the Actions tab, and does nothing when the version is released already.
+
 ### Dependencies
 
-`.agents/skills/dependency-update/SKILL.md` updates the Python and app dependencies within their cooldown and caps. Ask an agent to run the dependency-update skill.
+`.agents/skills/dependency-update/SKILL.md` updates the Python, app, and Windows app dependencies, and the release workflow's actions, within their cooldown and caps. Ask an agent to run the dependency-update skill.

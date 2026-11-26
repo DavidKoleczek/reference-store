@@ -1,5 +1,5 @@
-"""The app's own tools, for what isn't the library's business: image sizes, uploads, the file manager, and what the
-app remembers."""
+"""The app's own tools, for what isn't the library's business: image sizes, uploads, the file manager, what the app
+remembers, and the Windows app when that is what runs it."""
 
 from collections.abc import Callable
 from typing import Any
@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 import segno
 
-from reference_store.app import desktop, images, network, settings, uploads
+from reference_store.app import desktop, images, network, settings, uploads, windows_app
 from reference_store.app.known import Known
 from reference_store.app.tools import AppTool
 from reference_store.models import ReferenceStoreError
@@ -48,6 +48,11 @@ class SaveSettingsArguments(Arguments):
     settings: dict[str, Any]
 
 
+class ChangeWindowsAppArguments(Arguments):
+    lan: bool | None = None  # whether devices on the local network can open the app
+    start_at_sign_in: bool | None = None
+
+
 def own_tools(known: Known, lan_url: Callable[[], str | None]) -> list[AppTool]:
     """Returns the app's own tools. `lan_url` says where a device on the local network opens the app, if it can."""
 
@@ -81,6 +86,19 @@ def own_tools(known: Known, lan_url: Callable[[], str | None]) -> list[AppTool]:
         url = lan_url() if here else None
         code = segno.make(url, error="m").svg_data_uri(scale=6, border=2) if url else None
         return {"this_machine": here, "lan_url": url, "qr_code": code}
+
+    def read_windows_app(_: Arguments) -> dict[str, Any]:
+        app = windows_app.state()
+        return {"windows_app": app.model_dump(mode="json") if app else None}
+
+    def change_windows_app(checked: ChangeWindowsAppArguments) -> dict[str, Any]:
+        return windows_app.change(checked.lan, checked.start_at_sign_in).model_dump(mode="json")
+
+    def check_for_update(_: Arguments) -> dict[str, Any]:
+        return windows_app.check_for_update().model_dump(mode="json")
+
+    def install_update(_: Arguments) -> dict[str, Any]:
+        return windows_app.install_update().model_dump(mode="json")
 
     return [
         AppTool(
@@ -123,5 +141,37 @@ def own_tools(known: Known, lan_url: Callable[[], str | None]) -> list[AppTool]:
             description="Keeps what the app remembers, in place of what it kept before.",
             arguments=SaveSettingsArguments,
             run=save_app_settings,
+        ),
+        AppTool(
+            name="read_windows_app",
+            description="Returns what the Windows app that runs this server is like: its version, the newer version "
+            "there is to update to, and whether it is on the local network and starts at sign-in. Null when the "
+            "server was started any other way.",
+            arguments=Arguments,
+            run=read_windows_app,
+            local_only=True,
+        ),
+        AppTool(
+            name="change_windows_app",
+            description="Changes whether the Windows app serves on the local network, which starts this server "
+            "again a moment later, and whether it starts at sign-in. Returns what it is like after.",
+            arguments=ChangeWindowsAppArguments,
+            run=change_windows_app,
+            local_only=True,
+        ),
+        AppTool(
+            name="check_for_update",
+            description="Has the Windows app look for a newer version, and returns what it is like after.",
+            arguments=Arguments,
+            run=check_for_update,
+            local_only=True,
+        ),
+        AppTool(
+            name="install_update",
+            description="Has the Windows app install the newer version, which ends this server and starts the new "
+            "one on the same port.",
+            arguments=Arguments,
+            run=install_update,
+            local_only=True,
         ),
     ]

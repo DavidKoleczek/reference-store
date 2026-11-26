@@ -765,7 +765,7 @@ With `lan`, the app only answers devices on a private network. Other devices log
 
 - It is plain HTTP, so only use it on a network you trust.
 - Windows asks once to let it through the firewall, and the network has to be set to Private.
-- Other devices can't show files in File Explorer, or add or remove stores.
+- Other devices can't show files in File Explorer, add or remove stores, or change the Windows app's settings.
 - Delete `lan-key` in the configuration folder to log every device out.
 
 ## Configuration
@@ -779,6 +779,7 @@ Set `REFERENCE_STORE_HOME` to use another folder.
 - `locks/` keeps two processes from changing the same thing at once.
 - `stores/` has the clones of stores added by a GitHub URL.
 - `app.json` is what the app remembers, such as its theme, pane sizes, and sorts.
+- `desktop.json` is what the Windows app remembers: whether it serves on the local network, and its port.
 - `cache/` has the app's thumbnails and image sizes. Deleting it is safe, since the app makes them again.
 - `uploads/` holds files sent to the app until they are added to an entry.
 - `lan-key` is the key other devices log in with, made the first time the app is served with `lan`.

@@ -6,6 +6,13 @@ References are kept as plain files, so a store can live on a drive, a NAS, OneDr
 
 ## Install
 
+### Windows
+
+Download the latest executable from [Releases](https://github.com/DavidKoleczek/reference-store/releases/latest) which will install the tool, keep it updated, and give you a tray icon with useful functionality. More in [docs/03-windows-app](docs/03-windows-app.md).
+
+### Manual Install
+
+Use this installation for other platforms or if you want to manage it yourself.
 You need [uv](https://docs.astral.sh/uv/getting-started/installation/) installed, and [Node.js](https://nodejs.org/) for `npx`.
 
 ```bash
@@ -50,6 +57,7 @@ pkill -f "reference-store app --port 8790"
 - [Vision](docs/00-vision.md)
 - [Library reference](docs/01-library.md)
 - [CLI reference](docs/02-cli.md)
+- [Windows app](docs/03-windows-app.md)
 
 ## Contributing
 

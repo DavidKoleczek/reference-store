@@ -7,15 +7,19 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Notice } from "@/components/ui/notice";
 import { describe } from "@/lib/errors";
 import { connect } from "@/lib/host";
-import { loadNetwork } from "@/lib/network";
+import { appNetwork, loadNetwork } from "@/lib/network";
 import { loadSettings } from "@/lib/settings";
 import { TEXT } from "@/lib/text";
+import { loadWindowsApp } from "@/lib/windowsApp";
 
 const root = createRoot(document.getElementById("root")!);
 
 try {
   await connect();
   await Promise.all([loadSettings(), loadNetwork()]);
+  if (appNetwork().this_machine) {
+    await loadWindowsApp();
+  }
   root.render(
     <StrictMode>
       <TooltipProvider>

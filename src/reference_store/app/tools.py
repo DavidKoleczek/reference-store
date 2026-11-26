@@ -58,7 +58,7 @@ class AppTool:
     arguments: type[BaseModel]
     # Takes the arguments once checked, and returns what converts to JSON.
     run: Callable[[Any], Any]
-    # About this machine's disk, so only a page on this machine may call it.
+    # About this machine itself, such as its disk, so only a page on this machine may call it.
     local_only: bool = False
 
     @property

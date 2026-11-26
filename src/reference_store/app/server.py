@@ -93,7 +93,7 @@ class AppServer:
             return _failed(f"There is no tool {params.name}. The tools are: {', '.join(self._tools)}.")
         here = self._from_this_machine(ctx)
         if tool.local_only and not here:
-            return _failed(f"{params.name} is about this machine's disk, so only a page on this machine can use it.")
+            return _failed(f"{params.name} is about this machine itself, so only a page on this machine can use it.")
         # Copied into the thread the tool runs in, for the tools that say where they were asked from.
         network.FROM_THIS_MACHINE.set(here)
         try:

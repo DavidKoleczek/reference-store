@@ -379,6 +379,21 @@ export const TEXT = {
     qrCode: (url: string) => `QR code of ${url}`,
     copyAddress: "Copy address",
     documentation: "Documentation",
+    /** What the Windows app keeps, when it is what runs the server. */
+    thisComputer: "This computer",
+    onLocalNetwork: "Available on local network",
+    onLocalNetworkHelp:
+      "Lets a phone open the app. It is plain HTTP, so only on a network you trust.",
+    startAtSignIn: "Start when I sign in",
+    restarting: "Restarting...",
+    checkForUpdates: "Check for updates",
+    checking: "Checking...",
+    newest: "This is the newest version.",
+    updateAvailable: (version: string) => `Version ${version} is available.`,
+    update: "Update",
+    updating: (version: string) => `Updating to ${version}...`,
+    titleWithUpdate: (version: string) =>
+      `Settings. Version ${version} is available.`,
   },
 
   /** The layout for narrow screens. */

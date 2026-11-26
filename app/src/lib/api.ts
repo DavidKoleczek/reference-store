@@ -5,6 +5,7 @@
 import type { CallToolResult } from "@modelcontextprotocol/client";
 
 import { app } from "@/lib/host";
+import { gotNoAnswer } from "@/lib/restart";
 import { TEXT } from "@/lib/text";
 
 export type Store = {
@@ -164,10 +165,13 @@ async function call<Result>(
   name: string,
   args: Record<string, unknown> = {},
 ): Promise<Result> {
-  const result: CallToolResult = await app.callServerTool({
-    name,
-    arguments: args,
-  });
+  let result: CallToolResult;
+  try {
+    result = await app.callServerTool({ name, arguments: args });
+  } catch (cause) {
+    gotNoAnswer();
+    throw cause;
+  }
   if (result.isError) {
     const text = result.content.find((each) => each.type === "text");
     throw new ToolError(text?.text ?? TEXT.errors.toolFailed(name));
@@ -453,3 +457,31 @@ export type AppNetwork = {
 };
 
 export const readAppNetwork = () => call<AppNetwork>("read_app_network");
+
+/** The Windows app by the clock, when it is what runs the server, which keeps the settings a server can't. */
+export type WindowsApp = {
+  version: string;
+  /** The newer version there is to update to. */
+  update: string | null;
+  updating: boolean;
+  /** Whether the server is started on the local network. */
+  lan: boolean;
+  start_at_sign_in: boolean;
+};
+
+/** Null when the server was started any other way. Only a page on the machine itself may ask. */
+export async function readWindowsApp(): Promise<WindowsApp | null> {
+  return (await call<{ windows_app: WindowsApp | null }>("read_windows_app"))
+    .windows_app;
+}
+
+/** Changing `lan` starts the server again a moment after this answers. */
+export const changeWindowsApp = (changes: {
+  lan?: boolean;
+  start_at_sign_in?: boolean;
+}) => call<WindowsApp>("change_windows_app", changes);
+
+export const checkForUpdate = () => call<WindowsApp>("check_for_update");
+
+/** Ends the server once the newer version is downloaded, and starts the new one on the same port. */
+export const installUpdate = () => call<WindowsApp>("install_update");

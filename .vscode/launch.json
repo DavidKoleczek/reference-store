@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Windows app (sandbox)",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": ["build", "--bin=ReferenceStoreSetup"],
+                "cwd": "${workspaceFolder}/windows"
+            },
+            "cwd": "${workspaceFolder}/windows",
+            "env": {
+                "REFERENCE_STORE_SANDBOX": "${workspaceFolder}/temp/windows-sandbox"
+            }
+        },
+        {
+            "name": "Windows app tray (sandbox)",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": ["build", "--bin=ReferenceStoreSetup"],
+                "cwd": "${workspaceFolder}/windows"
+            },
+            "args": ["--background"],
+            "cwd": "${workspaceFolder}/windows",
+            "env": {
+                "REFERENCE_STORE_SANDBOX": "${workspaceFolder}/temp/windows-sandbox"
+            }
+        }
+    ]
+}

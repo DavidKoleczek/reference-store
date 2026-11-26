@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [pyproject.toml]
+  workflow_dispatch:
+
+permissions: {}
+
+# Two runs for one version would both build it, and the second would find its release made.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Read the version
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      released: ${{ steps.read.outputs.released }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: read
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null; then
+            echo "v$version is released already."
+            released=true
+          else
+            released=false
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "released=$released" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Release v${{ needs.version.outputs.version }}
+    needs: version
+    if: needs.version.outputs.released == 'false'
+    runs-on: windows-latest
+    permissions:
+      contents: write # To make the release.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Git for Windows would check text files out with CRLF, and the checks and the wheel take them as committed.
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The newest uv this version of the action has a checksum for, so uv moves only when the action does.
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: latest-known
+          require-checksums: true
+          enable-cache: false
+
+      # The app's checks pass without pnpm, so it has to be found for them to check that the committed build is current.
+      - name: Install pnpm
+        run: |
+          npm install --global "$(node --print "require('./app/package.json').packageManager")"
+          pnpm --version
+
+      - name: Install Rust
+        working-directory: windows
+        run: rustup toolchain install --no-self-update
+
+      - name: Precommit checks
+        run: uvx --exclude-newer "5 days" prek run --all-files --show-diff-on-failure
+
+      - name: Tests
+        run: uv run pytest
+
+      - name: Test and build the Windows app
+        run: uv run build-windows.py test build
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: >
+          gh release create "v$VERSION" windows/target/release/ReferenceStoreSetup.exe
+          --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes

@@ -71,7 +71,7 @@ export function TopBar({
         <Wordmark />
       </h1>
       <Divider />
-      <label className="flex h-7 w-full max-w-105 min-w-0 items-center gap-2 rounded-sm border border-line-control bg-field pr-1.5 pl-2 transition-[background-color,border-color] focus-within:border-ink focus-within:bg-panel">
+      <label className="flex h-7 w-full max-w-74 min-w-0 items-center gap-2 rounded-sm border border-line-control bg-field pr-1.5 pl-2 transition-[background-color,border-color] focus-within:border-ink focus-within:bg-panel">
         <Icon name="search" className="text-ink-muted" />
         <input
           ref={search}
