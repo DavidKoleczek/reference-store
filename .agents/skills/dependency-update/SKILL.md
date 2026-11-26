@@ -40,6 +40,12 @@ Report every major version upgrade, such as `1.x` to `2.x` or `2.x` to `3.x`, an
 
 ## App
 
+1. `packageManager` in `app/package.json` pins pnpm, which pnpm switches to inside `app/`. Find its newest release that is at least 5 days old with `npm view pnpm time --json`, and read the release notes since the pinned one. Set that version, then run `pnpm --dir app install`, which pins the same pnpm at the top of `app/pnpm-lock.yaml`.
+1. `.github/pnpm/package.json` pins the pnpm the release workflow installs, with npm's lock. Set the same version there, then refresh the lock from `.github/pnpm/`:
+
+   ```bash
+   npm install --package-lock-only --ignore-scripts --no-audit --no-fund --before="$(date -u -d '5 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+   ```
 1. Run `pnpm --dir app outdated`. Its Latest column already respects the cooldown.
 1. Note every row whose Latest is a new major (for example `typescript` 6 to 7). For each, check its peers with `pnpm view <package>@<version> peerDependencies`, and the peer ranges of the packages that depend on it, so the report can say whether it is possible today. A common blocker is `typescript-eslint` capping `typescript`.
 1. Update everything else, excluding each major by name:

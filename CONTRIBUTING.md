@@ -161,9 +161,9 @@ A release is made when the version changes on main. Bump it, set the same versio
 uv version --bump patch
 ```
 
-A test fails while the two versions differ.
+`uv run pytest` fails while the two versions differ.
 
-The Release workflow runs the checks, builds `ReferenceStoreSetup.exe`, and publishes it as the release `v<version>`. Installed apps offer the update within a day.
+The Release workflow checks that `uv.lock` and the app's committed build are current, builds `ReferenceStoreSetup.exe`, and publishes it as the release `v<version>`. It doesn't run the tests or the other checks, so run those before pushing. Installed apps offer the update within a day.
 It can also be run by hand from the Actions tab, and does nothing when the version is released already.
 
 ### Dependencies
