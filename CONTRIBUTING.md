@@ -75,6 +75,7 @@ The library is in `src/reference_store/`:
 - `models.py` holds what `lib.py` takes and returns.
 - `capabilities/<name>/` holds one feature each, such as `manage_entries/` or `listing/`. `lib.py` calls into them, and they don't import each other.
 - `core/` holds what more than one capability uses, such as the configuration, the name rules, and reading an entry from its folder.
+- `app/` is the app's server including the MCP server for the MCP app.
 
 ### App
 
@@ -84,6 +85,7 @@ The library is in `src/reference_store/`:
 - The browser page that shows the view and its sandbox, plain TypeScript in `app/host/`, compiled to `src/reference_store/app/static/host/`.
 
 Both are committed, so the tool installs and runs with no Node present.
+The view's text, such as its labels, help text, and messages, is in `app/src/lib/text.ts`.
 The precommit hooks lint, format, type check, and build the app whenever `app/` changes. Without pnpm they say so and pass.
 
 Install dependencies:

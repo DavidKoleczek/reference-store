@@ -2,6 +2,7 @@ import { Component, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
+import { TEXT } from "@/lib/text";
 
 /**
  * Catches a failure rendering `children`, so the rest of the app stays up and says what broke rather than going blank.
@@ -23,7 +24,7 @@ export class ErrorBoundary extends Component<
     }
     return (
       <div className={this.props.className}>
-        <Notice title={`${this.props.what} hit a problem.`}>
+        <Notice title={TEXT.errors.broke(this.props.what)}>
           {this.state.error.message}
           <Button
             variant="secondary"
@@ -31,7 +32,7 @@ export class ErrorBoundary extends Component<
             onClick={() => this.setState({ error: null })}
             className="mt-2 flex"
           >
-            Try again
+            {TEXT.common.tryAgain}
           </Button>
         </Notice>
       </div>

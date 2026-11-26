@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { app } from "@/lib/host";
+import { TEXT } from "@/lib/text";
 import { cn, copyText } from "@/lib/utils";
 
 function CodeBlock({ children }: ComponentProps<"pre">) {
@@ -22,8 +23,8 @@ function CodeBlock({ children }: ComponentProps<"pre">) {
         variant="secondary"
         size="sm"
         icon
-        aria-label={copied ? "Copied" : "Copy"}
-        title={copied ? "Copied" : "Copy"}
+        aria-label={copied ? TEXT.common.copied : TEXT.common.copy}
+        title={copied ? TEXT.common.copied : TEXT.common.copy}
         onClick={async () => {
           if (await copyText(block.current?.textContent ?? "")) {
             setCopied(true);

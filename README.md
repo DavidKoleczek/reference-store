@@ -26,8 +26,10 @@ uv add "reference-store @ git+https://github.com/DavidKoleczek/reference-store"
 ## Usage
 
 ```bash
-# Serve the app in the browser, at the URL it prints
-reference-store app
+# Serve the app in the browser
+# Add `--lan` to make the app accessible on the local network. A QR code can be used to login (available in settings)
+# The app is plain HTTP, so only use `--lan` on a network you trust. More in docs/01-library
+reference-store app --lan
 
 # Run the app in the background at http://127.0.0.1:8790 (runs even if the shell closes)
 # PowerShell (Windows)

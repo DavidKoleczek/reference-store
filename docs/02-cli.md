@@ -222,10 +222,10 @@ Says the index was rebuilt, and takes no `--json`. [Large stores](01-library.md#
 ## App
 
 ```
-reference-store app [--port <n>]
+reference-store app [--port <n>] [--lan]
 ```
 
-`lib.app_server().open()`, with its URL printed. It keeps serving until Ctrl+C, which exits 0. It exits 1 when `--port` names a port that is held.
+`lib.app_server().open()`, with its URL printed. With `--lan` it also prints `lan_url`. It keeps serving until Ctrl+C, which exits 0. It exits 1 when `--port` names a port that is held.
 
 ## Adding a command
 

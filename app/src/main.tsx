@@ -7,15 +7,19 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Notice } from "@/components/ui/notice";
 import { describe } from "@/lib/errors";
 import { connect } from "@/lib/host";
+import { loadNetwork } from "@/lib/network";
+import { loadSettings } from "@/lib/settings";
+import { TEXT } from "@/lib/text";
 
 const root = createRoot(document.getElementById("root")!);
 
 try {
   await connect();
+  await Promise.all([loadSettings(), loadNetwork()]);
   root.render(
     <StrictMode>
       <TooltipProvider>
-        <ErrorBoundary what="The app" className="m-4">
+        <ErrorBoundary what={TEXT.errors.theApp} className="m-4">
           <App />
         </ErrorBoundary>
       </TooltipProvider>
@@ -23,7 +27,7 @@ try {
   );
 } catch (cause) {
   root.render(
-    <Notice title="Could not connect to the host." className="m-4">
+    <Notice title={TEXT.errors.noHost} className="m-4">
       {describe(cause)}
     </Notice>,
   );

@@ -3,6 +3,7 @@ import type { ReactNode, RefObject } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { TEXT } from "@/lib/text";
 import { cn } from "@/lib/utils";
 
 export const Dialog = DialogPrimitive.Root;
@@ -50,7 +51,9 @@ export function DialogContent({
                 </DialogPrimitive.Description>
               )}
             </div>
-            <DialogPrimitive.Close render={<Button icon aria-label="Close" />}>
+            <DialogPrimitive.Close
+              render={<Button icon aria-label={TEXT.common.close} />}
+            >
               <Icon name="close" size={20} />
             </DialogPrimitive.Close>
           </header>

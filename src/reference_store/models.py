@@ -205,4 +205,5 @@ class FileListing(BaseModel):
 class App(BaseModel):
     """The app while it is being served."""
 
-    url: str
+    url: str  # where to open it on this machine
+    lan_url: str | None = None  # where a device on the local network opens it, key and all, when served with `lan`

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Icon, type IconName } from "@/components/ui/icon";
+import { TEXT } from "@/lib/text";
 import { cn } from "@/lib/utils";
 
 /**
@@ -57,7 +58,7 @@ export function Notice({
         <Button
           size="sm"
           icon
-          aria-label="Dismiss"
+          aria-label={TEXT.common.dismiss}
           onClick={onDismiss}
           className="-my-0.5 -mr-1"
         >

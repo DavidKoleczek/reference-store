@@ -952,14 +952,20 @@ def skill() -> None:
 @app.command("app")
 def app_(
     port: Annotated[int | None, typer.Option(help="The port to bind; a free one is chosen when omitted.")] = None,
+    lan: Annotated[
+        bool, typer.Option("--lan", help="Let devices on the local network open it too, with the key in its URL.")
+    ] = False,
 ) -> None:
     """Serve the app in a browser page on this machine and print its URL.
 
-    Keeps serving until Ctrl+C.
+    With --lan it also prints the URL other devices on the local network open. Keeps serving until Ctrl+C.
     """
     app_server = lib.app_server()
     with _reported():
-        typer.echo(app_server.open(port).url)
+        served = app_server.open(port, lan)
+    typer.echo(served.url)
+    if lan:
+        typer.echo(served.lan_url or "No local network was found, so only this machine can open it.")
     with contextlib.suppress(KeyboardInterrupt):
         while True:
             time.sleep(1)

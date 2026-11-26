@@ -4,6 +4,7 @@ import {
   type McpUiHostContext,
 } from "@modelcontextprotocol/ext-apps";
 
+import { TEXT } from "@/lib/text";
 import { setHostTheme } from "@/lib/theme";
 import { QuietPostMessageTransport } from "@/lib/transport";
 
@@ -51,9 +52,7 @@ app.addEventListener("hostcontextchanged", applyHostContext);
 
 export async function connect(): Promise<void> {
   if (window.parent === window) {
-    throw new Error(
-      "This page is an MCP App view and needs a host. Run `reference-store app` to open it.",
-    );
+    throw new Error(TEXT.errors.needsHost);
   }
   await app.connect(
     new QuietPostMessageTransport(window.parent, window.parent),
