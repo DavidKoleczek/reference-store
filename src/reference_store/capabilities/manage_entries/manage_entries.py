@@ -22,6 +22,7 @@ def add_entry(
     preview: NewPreview | None,
     files: list[NewFile] | None,
     created: datetime | None,
+    source_published_at: datetime | None,
     store: str | None,
 ) -> Entry:
     """Adds an entry with what it is given, to the store named, the project's, or the default."""
@@ -40,6 +41,7 @@ def add_entry(
         tags=entries.clean_tags(tags or []),
         notes=notes,
         rating=rating,
+        source_published_at=entries.in_utc(source_published_at) if source_published_at else None,
         created=entries.in_utc(created) if created else now,
         updated=now,
     )
@@ -92,6 +94,7 @@ def update_entry(
     notes: str | NotGiven,
     rating: int | NotGiven | None,
     preview: NewPreview | NotGiven | None,
+    source_published_at: datetime | NotGiven | None,
     add_tags: list[str] | None,
     remove_tags: list[str] | None,
     store: str | None,
@@ -124,6 +127,8 @@ def update_entry(
             record.notes = notes
         if not isinstance(rating, NotGiven):
             record.rating = rating
+        if not isinstance(source_published_at, NotGiven):
+            record.source_published_at = entries.in_utc(source_published_at) if source_published_at else None
         record.tags = entries.retagged(record.tags, adding, removing)
         old_copy = before.preview.file if before.preview and entries.is_copied_preview(before.preview.file) else None
         if not isinstance(preview, NotGiven):

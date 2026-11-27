@@ -51,9 +51,9 @@ def test_an_entry_is_changed_renamed_moved_and_deleted_with_what_is_in_it(worksp
 
     changed = run(
         "update-entry", "GAME-1", "--title", "Game 1: The First One", "--rating", "5", "--add-tag", "PUZZLE",
-        "--add-tag", "ux", "--remove-tag", "GAME", "--clear", "url",
+        "--add-tag", "ux", "--remove-tag", "GAME", "--clear", "url", "--source-published-at", "2024-03-05T09:15:00+01:00",
     )  # fmt: skip
-    kept = ("id", "title", "description", "url", "tags", "rating", "created")
+    kept = ("id", "title", "description", "url", "tags", "rating", "source_published_at", "created")
     assert {key: changed[key] for key in kept} == {
         "id": added["id"],
         "title": "Game 1: The First One",
@@ -61,10 +61,14 @@ def test_an_entry_is_changed_renamed_moved_and_deleted_with_what_is_in_it(worksp
         "url": None,
         "tags": ["Puzzle", "ux"],
         "rating": 5,
+        "source_published_at": "2024-03-05T08:15:00Z",
         "created": added["created"],
     }
     saved = (folder / ".entry.json").read_bytes()
-    run("update-entry", "game-1", "--add-tag", "UX", "--remove-tag", "game")
+    run(
+        "update-entry", "game-1", "--add-tag", "UX", "--remove-tag", "game", "--source-published-at",
+        "2024-03-05T08:15:00Z",
+    )  # fmt: skip
     assert (folder / ".entry.json").read_bytes() == saved
 
     def preview() -> Any:
@@ -85,8 +89,15 @@ def test_an_entry_is_changed_renamed_moved_and_deleted_with_what_is_in_it(worksp
         True,
         False,
     )
-    cleared = run("update-entry", "game-1", "--clear", "preview", "--clear", "description")
-    assert (cleared["preview"], cleared["description"], cleared["file_count"]) == (None, "", 2)
+    cleared = run(
+        "update-entry", "game-1", "--clear", "preview", "--clear", "description", "--clear", "source_published_at"
+    )
+    assert (cleared["preview"], cleared["description"], cleared["source_published_at"], cleared["file_count"]) == (
+        None,
+        "",
+        None,
+        2,
+    )
     assert on_disk(folder) == [".entry.json", "notes.md", "shots", "shots/menu.png"]
 
     run("add-entry", "game-2")
@@ -106,9 +117,12 @@ def test_an_entry_is_changed_renamed_moved_and_deleted_with_what_is_in_it(worksp
         ["move-entry", "game-1", "deep"],
     ]:
         refused(*refusal)
-    assert (
-        runner.invoke(app, ["update-entry", "game-1", "--url", "https://example.com", "--clear", "url"]).exit_code == 2
-    )
+    for misused in [
+        ["--url", "https://example.com", "--clear", "url"],
+        ["--source-published-at", "2024-03-05", "--clear", "source_published_at"],
+        ["--source-published-at", "last week"],
+    ]:
+        assert runner.invoke(app, ["update-entry", "game-1", *misused]).exit_code == 2, misused
     assert on_disk(workspace) == before
 
     renamed = run("rename-entry", "game-1", "Game-One")

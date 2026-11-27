@@ -39,9 +39,13 @@ def test_entries_are_listed_filtered_sorted_and_paged_across_stores(workspace: P
     )  # fmt: skip
     run(
         "add-entry", "game-2", "--tag", "Game", "--rating", "2", "--url", "https://twitter.com/someone/status/1",
-        "--created", "2026-01-02",
+        "--created", "2026-01-02", "--source-published-at", "2025-06-01T12:00:00Z",
     )  # fmt: skip
-    run("add-entry", "notes", "--url", "https://example.com/a", "--created", "2026-01-03")
+    notes = [
+        "add-entry", "notes", "--url", "https://example.com/a", "--created", "2026-01-03", "--source-published-at",
+        "2024-02-01",
+    ]  # fmt: skip
+    run(*notes)
     run(
         "add-entry", "game-1", "--store", "beta", "--tag", "game", "--url", "https://github.com/some-org/other",
         "--created", "2026-01-04",
@@ -71,7 +75,7 @@ def test_entries_are_listed_filtered_sorted_and_paged_across_stores(workspace: P
     shutil.rmtree(workspace / "alpha" / "notes")
     rest = run("list-entries", "--limit", "2", "--after", first["after"])
     assert ([entry["name"] for entry in rest["entries"]], rest["total"]) == (["game-2", "game-1"], 4)
-    run("add-entry", "notes", "--url", "https://example.com/a", "--created", "2026-01-03")
+    run(*notes)
 
     assert listed("--tag", "GAME") == ["beta/game-1", "alpha/game-2", "alpha/game-1"]
     assert listed("--tag", "game", "--tag", "puzzle") == ["alpha/game-1"]
@@ -96,6 +100,9 @@ def test_entries_are_listed_filtered_sorted_and_paged_across_stores(workspace: P
     assert listed("--sort", "rating") == ["alpha/game-1", "alpha/game-2", *unrated]
     assert listed("--sort", "rating", "--ascending") == ["alpha/game-2", "alpha/game-1", *unrated]
     assert listed("--sort", "tags") == ["beta/game-1", "alpha/game-2", "alpha/game-1", "beta/by-hand", "alpha/notes"]
+    unpublished = ["beta/by-hand", "alpha/game-1", "beta/game-1"]
+    assert listed("--sort", "published", "--limit", "2") == ["alpha/game-2", "alpha/notes", *unpublished]
+    assert listed("--sort", "published", "--ascending") == ["alpha/notes", "alpha/game-2", *unpublished]
 
     text = runner.invoke(app, ["list-entries", "--store", "alpha", "--sort", "name", "--limit", "2"])
     lines = text.stdout.splitlines()
@@ -105,6 +112,12 @@ def test_entries_are_listed_filtered_sorted_and_paged_across_stores(workspace: P
     ]
     after = run("list-entries", "--store", "alpha", "--sort", "name", "--limit", "2")["after"]
     assert lines[2] == f"2 of 3 entries. For the next page: --after {after}"
+    published = runner.invoke(app, ["list-entries", "--store", "alpha", "--sort", "published"]).stdout
+    assert published.splitlines()[:3] == [
+        "game-2  alpha  2025-06-01  0 files  rated 2  [Game]",
+        "notes  alpha  2024-02-01  0 files",
+        "game-1 (Game 1: The First One)  alpha  date unknown  0 files  rated 4  [game, puzzle]",
+    ]
 
     assert run("list-tags") == [
         {"tag": "game", "entries": 3, "files": 0},

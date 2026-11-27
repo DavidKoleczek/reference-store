@@ -64,7 +64,10 @@ def test_the_index_keeps_up_with_the_library_and_catches_up_with_changes_by_hand
     (inbox / "notes.md").write_text("Notes.\n", encoding="utf-8")
     run("add-entry", "game-1", "--tag", "game", "--rating", "4", "--preview", str(inbox / "menu.png"))
     run("add-files", "game-1", str(inbox / "menu.png"), "--path", "screenshots/", "--tag", "ux")
-    run("add-entry", "game-2", "--description", "Second.", "--file", str(inbox / "notes.md"))
+    run(
+        "add-entry", "game-2", "--description", "Second.", "--file", str(inbox / "notes.md"), "--source-published-at",
+        "2024-03-05",
+    )  # fmt: skip
     run("add-entry", "game-1", "--store", "beta", "--tag", "game", "--file", str(inbox / "notes.md"))
 
     assert entries() == ["game-1 1", "game-1 1", "game-2 1 Second."]
@@ -132,6 +135,29 @@ def test_the_index_keeps_up_with_the_library_and_catches_up_with_changes_by_hand
     for leftover in (config.home() / "index").glob("index.sqlite-*"):
         leftover.unlink()
     assert entries() == ["game-1 1 Edited in place.", "Game-2 2 Changed."]
+    index_is_what_the_folders_hold()
+
+
+def test_an_index_made_by_another_version_is_made_again(workspace: Path) -> None:
+    run("add-store", "alpha", "alpha")
+    run("add-entry", "game-1", "--source-published-at", "2024-03-05T18:30:00Z")
+    assert entries() == ["game-1 0"]
+    with contextlib.closing(sqlite3.connect(index.location())) as connection:
+        # As version 1 of the index kept an entry, without `source_published_at`.
+        (summary,) = connection.execute("select summary from entries").fetchone()
+        with connection:
+            connection.execute(
+                "update entries set summary = ?",
+                (
+                    json.dumps(
+                        {key: value for key, value in json.loads(summary).items() if key != "source_published_at"}
+                    ),
+                ),
+            )
+        connection.execute("pragma user_version = 1")
+    assert [entry["source_published_at"] for entry in run("list-entries")["entries"]] == ["2024-03-05T18:30:00Z"]
+    with contextlib.closing(sqlite3.connect(index.location())) as connection:
+        assert connection.execute("pragma user_version").fetchone() == (index.VERSION,)
     index_is_what_the_folders_hold()
 
 

@@ -45,7 +45,7 @@ function choices<Value extends string>(
 }
 
 export const ENTRY_SORTS = choices<EntrySort>(
-  ["name", "created", "files", "size", "tags", "rating", "store"],
+  ["name", "created", "published", "files", "size", "tags", "rating", "store"],
   TEXT.sort.by,
 );
 
@@ -71,9 +71,15 @@ export const IN_ENTRY_GROUPS = choices<InEntryGroup>(
 
 /** What a sort starts as when it is picked: the newest, largest, and best rated first, and names from A. */
 export function startsDescending(sort: string): boolean {
-  return ["created", "updated", "modified", "size", "files", "rating"].includes(
-    sort,
-  );
+  return [
+    "created",
+    "updated",
+    "published",
+    "modified",
+    "size",
+    "files",
+    "rating",
+  ].includes(sort);
 }
 
 /** The arrangement after a column's header is clicked: sorted by it, or the other way round when it already is. */

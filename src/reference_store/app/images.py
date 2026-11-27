@@ -1,5 +1,6 @@
-"""Thumbnails and sizes of the images in entries. They are the app's, not the library's, and are kept in `cache/` in the
-configuration folder by each image's path, size, and when it last changed, so the folder can be deleted at any time."""
+"""Thumbnails of the images and HTML files in entries, and the sizes of the images. They are the app's, not the
+library's, and are kept in `cache/` in the configuration folder by each file's path, size, and when it last changed, so
+the folder can be deleted at any time."""
 
 import contextlib
 import hashlib
@@ -11,6 +12,7 @@ import uuid
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from reference_store.app import webpages
 from reference_store.core import config
 from reference_store.models import ReferenceStoreError
 
@@ -33,30 +35,33 @@ CHUNK = 500
 
 
 def is_image(path: Path) -> bool:
-    """Returns whether a file has a thumbnail."""
+    """Returns whether a file is an image, which has a thumbnail."""
     return path.suffix.lower() in RASTER or path.suffix.lower() == SVG
 
 
 def thumbnail(path: Path, size: str) -> tuple[bytes, str]:
     """Returns a WebP of the image at `path` that fits a square of the size's edge, made once and kept, and its MIME
-    type. An SVG is returned as it is.
+    type. An SVG is returned as it is, and an HTML file has a picture of the top of its page.
 
     Raises:
-        ReferenceStoreError: The size isn't one, or the file can't be read as an image.
+        ReferenceStoreError: The size isn't one, or the file can't be read as an image or drawn as a page.
     """
     if size not in EDGES:
         raise ReferenceStoreError(f"There is no thumbnail size {size}. It is one of: {', '.join(EDGES)}.")
     suffix = path.suffix.lower()
     if suffix == SVG:
         return _read(path), "image/svg+xml"
-    if suffix not in RASTER:
-        raise ReferenceStoreError(f"{path.name} isn't an image the app makes thumbnails of.")
+    page = webpages.is_page(path)
+    if suffix not in RASTER and not page:
+        raise ReferenceStoreError(f"{path.name} isn't an image or a page the app makes thumbnails of.")
     info = _stat(path)
-    key = hashlib.sha256(f"{path}|{info.st_size}|{info.st_mtime_ns}|{EDGES[size]}".encode()).hexdigest()[:40]
+    # How a page is drawn is in its key, so a change to that draws it again rather than keep the picture it had.
+    drawn = f"|{webpages.SCHEME}" if page else ""
+    key = hashlib.sha256(f"{path}|{info.st_size}|{info.st_mtime_ns}|{EDGES[size]}{drawn}".encode()).hexdigest()[:40]
     kept = config.home() / CACHE / THUMBNAILS / f"{key}.webp"
     with contextlib.suppress(OSError):
         return kept.read_bytes(), "image/webp"
-    made = _make(path, EDGES[size])
+    made = _make(webpages.screenshot(path) if page else _read(path), path.name, EDGES[size])
     kept.parent.mkdir(parents=True, exist_ok=True)
     # Written beside it and put in place, so a thumbnail being made by another call is never read half done.
     beside = kept.with_name(f"{kept.stem}.{uuid.uuid4().hex[:8]}.tmp")
@@ -107,9 +112,9 @@ def sizes(paths: list[Path]) -> list[tuple[int, int] | None]:
     return found
 
 
-def _make(path: Path, edge: int) -> bytes:
+def _make(content: bytes, name: str, edge: int) -> bytes:
     try:
-        with Image.open(BytesIO(_read(path))) as image:
+        with Image.open(BytesIO(content)) as image:
             # A JPEG decodes at a fraction of its size that still covers the edge, so a wall of photos fills in fast.
             image.draft("RGB", (edge, edge))
             small = ImageOps.exif_transpose(image)
@@ -119,7 +124,7 @@ def _make(path: Path, edge: int) -> bytes:
             buffer = BytesIO()
             small.save(buffer, format="WEBP", quality=QUALITY)
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as error:
-        raise ReferenceStoreError(f"{path.name} can't be read as an image: {error}") from None
+        raise ReferenceStoreError(f"{name} can't be read as an image: {error}") from None
     return buffer.getvalue()
 
 

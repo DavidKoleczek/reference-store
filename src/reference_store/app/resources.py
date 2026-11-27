@@ -23,7 +23,8 @@ TEMPLATES = [
     ResourceTemplate(
         name="thumbnail",
         uri_template=f"{THUMBNAILS}{{size}}/{{store}}/{{entry}}/{{+path}}",
-        description="One of an entry's images as a WebP that fits the size, small or large.",
+        description="One of an entry's images, or a picture of the top of one of its HTML files, as a WebP that fits "
+        "the size, small or large.",
         mime_type="image/webp",
     ),
     ResourceTemplate(

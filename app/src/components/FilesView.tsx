@@ -9,7 +9,7 @@ import { GroupHeader, WallRow } from "@/components/Grids";
 import { Picture } from "@/components/Picture";
 import { Windowed, type WindowRow } from "@/components/Windowed";
 import { Icon } from "@/components/ui/icon";
-import { thumbnailUri } from "@/lib/api";
+import { fileVersion, thumbnailUri } from "@/lib/api";
 import type { Layout } from "@/lib/arrange";
 import {
   dimensions,
@@ -19,7 +19,7 @@ import {
   formatKilobytes,
   formatSize,
   formatTime,
-  isImage,
+  hasThumbnail,
 } from "@/lib/format";
 import {
   GROUP_HEADER_HEIGHT,
@@ -58,7 +58,8 @@ function NameCell({ shown }: { shown: Shown }) {
     <span className="flex min-w-0 items-center gap-2">
       <span className={cn(THUMB, "overflow-hidden")}>
         <Picture
-          uri={isImage(file) ? thumbnailUri(file, "small") : null}
+          uri={hasThumbnail(file) ? thumbnailUri(file, "small") : null}
+          version={fileVersion(file)}
           fallback={icon}
           className={cn(THUMB, "border border-line bg-field object-cover")}
         />

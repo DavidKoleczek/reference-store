@@ -100,6 +100,7 @@ class EntrySummary(BaseModel):
     preview: Preview | None
     file_count: int
     size: int  # of all its files, in bytes
+    source_published_at: datetime | None  # when the reference itself was first published, as far as is known
     created: datetime
     updated: datetime
 
@@ -112,7 +113,7 @@ class Entry(EntrySummary):
 
 
 TagMatch = Literal["all", "any"]
-EntrySort = Literal["name", "created", "updated", "rating", "size", "files", "tags", "store"]
+EntrySort = Literal["name", "created", "updated", "published", "rating", "size", "files", "tags", "store"]
 FileSort = Literal["path", "name", "modified", "size", "type"]
 
 

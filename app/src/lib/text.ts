@@ -62,6 +62,10 @@ export const TEXT = {
       fileHelp: "Describe what the file is about",
     },
     link: { label: "Link", placeholder: "https://" },
+    published: {
+      label: "Published At",
+      help: "Add when it was first published",
+    },
     tags: { label: "Tags" },
     notes: {
       label: "Notes",
@@ -93,6 +97,8 @@ export const TEXT = {
     manageStores: "Manage stores",
     allStores: "All stores",
     sites: "Sites",
+    /** The button that shows or hides the groups of a site, such as its users or its owners. */
+    groupsOf: (site: string) => `Groups on ${site}`,
     tags: "Tags",
     fileTags: "File tags",
     noneYet: "None yet.",
@@ -130,6 +136,7 @@ export const TEXT = {
       name: "Name",
       created: "Date",
       updated: "Updated",
+      published: "Published At",
       modified: "Date",
       files: "Files",
       size: "Size",
@@ -153,6 +160,7 @@ export const TEXT = {
   columns: {
     name: "Name",
     date: "Date",
+    published: "Published At",
     files: "Files",
     size: "Size",
     tags: "Tags",

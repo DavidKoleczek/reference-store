@@ -173,8 +173,11 @@ export function FiltersPane({
   tags,
   filters,
   onFilters,
+  onStore,
   sections,
   onSections,
+  closedSites,
+  onClosedSites,
   onManageStores,
   storeMenu,
 }: {
@@ -186,16 +189,34 @@ export function FiltersPane({
   tags: TagCount[];
   filters: Filters;
   onFilters: (filters: Filters) => void;
+  /** Picks a store, or every store with null, even the one picked already, which is a way back to its list. */
+  onStore: (store: string | null) => void;
   sections: Record<"stores" | "sites" | "tags" | "fileTags", boolean>;
   onSections: (
     sections: Record<"stores" | "sites" | "tags" | "fileTags", boolean>,
   ) => void;
+  /** The sites whose groups are hidden, by name. */
+  closedSites: string[];
+  onClosedSites: (sites: string[]) => void;
   /** Opens the list of stores, to change their order or add one. */
   onManageStores: () => void;
   storeMenu: (store: Store) => ReactNode;
 }) {
+  // A group picked stays in sight while its site is closed, so no filter in use is hidden.
+  const shownSites = sites.map(({ site, entries, groups }) => ({
+    site,
+    entries,
+    hasGroups: groups.length > 0,
+    open: !closedSites.includes(site),
+    groups: closedSites.includes(site)
+      ? groups.filter((each) =>
+          filters.sites.includes(siteKey(site, each.group)),
+        )
+      : groups,
+  }));
+  const nested = shownSites.some((each) => each.hasGroups);
   const pickSite = usePicker(
-    sites.flatMap(({ site, groups }) => [
+    shownSites.flatMap(({ site, groups }) => [
       siteKey(site),
       ...groups.map((each) => siteKey(site, each.group)),
     ]),
@@ -242,7 +263,7 @@ export function FiltersPane({
           <div className="-mx-1">
             <Row
               selected={filters.store === null}
-              onClick={() => onFilters({ ...filters, store: null })}
+              onClick={() => onStore(null)}
               lead={<Icon name="grid" className="text-ink-muted" />}
               count={totals[""] ?? null}
             >
@@ -255,9 +276,7 @@ export function FiltersPane({
                   <ContextMenuTrigger>
                     <Row
                       selected={filters.store === store.name}
-                      onClick={() =>
-                        onFilters({ ...filters, store: store.name })
-                      }
+                      onClick={() => onStore(store.name)}
                       lead={
                         <Icon
                           name={store.available ? "folder" : "warning"}
@@ -300,43 +319,76 @@ export function FiltersPane({
             }
           >
             <div className="-mx-1">
-              {sites.map(({ site, entries, groups }) => {
+              {shownSites.map(({ site, entries, hasGroups, open, groups }) => {
                 const picked = filters.sites.includes(siteKey(site));
                 return (
                   <Fragment key={site}>
-                    <Row
-                      selected={picked}
-                      onClick={(click) => pickSite(siteKey(site), click)}
-                      lead={
-                        <Icon
-                          name={picked ? "check" : "globe"}
-                          className={
-                            picked ? "text-accent-ink" : "text-ink-muted"
+                    <div className="flex">
+                      {hasGroups ? (
+                        <button
+                          type="button"
+                          aria-label={TEXT.filters.groupsOf(site)}
+                          aria-expanded={open}
+                          onClick={() =>
+                            onClosedSites(
+                              open
+                                ? [...closedSites, site]
+                                : closedSites.filter((each) => each !== site),
+                            )
                           }
-                        />
-                      }
-                      count={entries}
-                    >
-                      <span className="truncate">{site}</span>
-                    </Row>
+                          className="grid h-7 w-5 shrink-0 cursor-default place-items-center rounded-sm text-ink-muted outline-none hover:text-ink focus-visible:focus-ring"
+                        >
+                          <Icon
+                            name="chevron"
+                            className={cn(
+                              "transition-transform",
+                              !open && "-rotate-90",
+                            )}
+                          />
+                        </button>
+                      ) : (
+                        nested && <span className="w-5 shrink-0" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <Row
+                          selected={picked}
+                          onClick={(click) => pickSite(siteKey(site), click)}
+                          lead={
+                            <Icon
+                              name={picked ? "check" : "globe"}
+                              className={
+                                picked ? "text-accent-ink" : "text-ink-muted"
+                              }
+                            />
+                          }
+                          count={entries}
+                        >
+                          <span className="truncate">{site}</span>
+                        </Row>
+                      </div>
+                    </div>
                     {groups.map((each) => {
                       const key = siteKey(site, each.group);
                       const one = filters.sites.includes(key);
                       return (
-                        <Row
-                          key={key}
-                          indent
-                          selected={one}
-                          onClick={(click) => pickSite(key, click)}
-                          lead={
-                            one && (
-                              <Icon name="check" className="text-accent-ink" />
-                            )
-                          }
-                          count={each.entries}
-                        >
-                          <span className="truncate">{each.group}</span>
-                        </Row>
+                        <div key={key} className="pl-5">
+                          <Row
+                            indent
+                            selected={one}
+                            onClick={(click) => pickSite(key, click)}
+                            lead={
+                              one && (
+                                <Icon
+                                  name="check"
+                                  className="text-accent-ink"
+                                />
+                              )
+                            }
+                            count={each.entries}
+                          >
+                            <span className="truncate">{each.group}</span>
+                          </Row>
+                        </div>
                       );
                     })}
                   </Fragment>

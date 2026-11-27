@@ -1071,15 +1071,21 @@ export function Browser({ local }: { local: boolean }) {
               setFilters(next);
               if (
                 opened &&
-                (next.store !== filters.store ||
-                  next.tags !== filters.tags ||
-                  next.sites !== filters.sites)
+                (next.tags !== filters.tags || next.sites !== filters.sites)
               ) {
+                goTo(null);
+              }
+            }}
+            onStore={(store) => {
+              setFilters({ ...filters, store });
+              if (opened) {
                 goTo(null);
               }
             }}
             sections={settings.sections}
             onSections={(sections) => changeSettings({ sections })}
+            closedSites={settings.closedSites}
+            onClosedSites={(closedSites) => changeSettings({ closedSites })}
             onManageStores={() => setDialog({ kind: "stores" })}
             storeMenu={(store) => <StoreActions store={store} doing={doing} />}
           />

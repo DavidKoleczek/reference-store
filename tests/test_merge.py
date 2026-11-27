@@ -22,9 +22,9 @@ def record(updated: datetime = EARLY, **fields: Any) -> EntryRecord:
     [
         pytest.param(
             {"description": "Old.", "rating": 2},
-            {"description": "Ours.", "rating": 2},
+            {"description": "Ours.", "rating": 2, "source_published_at": EARLY},
             {"description": "Old.", "rating": 5, "url": "https://example.com"},
-            {"description": "Ours.", "rating": 5, "url": "https://example.com"},
+            {"description": "Ours.", "rating": 5, "url": "https://example.com", "source_published_at": EARLY},
             id="each side's change to a different field is kept",
         ),
         pytest.param(

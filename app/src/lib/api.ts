@@ -64,6 +64,8 @@ export type EntrySummary = {
   preview: Preview | null;
   file_count: number;
   size: number;
+  /** When the reference itself was first published, as far as is known. ISO 8601. */
+  source_published_at: string | null;
   created: string;
   updated: string;
 };
@@ -87,6 +89,7 @@ export type EntrySort =
   | "name"
   | "created"
   | "updated"
+  | "published"
   | "rating"
   | "size"
   | "files"
@@ -292,6 +295,7 @@ export type EntryChange = {
   notes?: string;
   rating?: number | null;
   preview?: NewPreview | null;
+  source_published_at?: string | null;
   add_tags?: string[];
   remove_tags?: string[];
 };
@@ -415,6 +419,18 @@ export const thumbnailUri = (
 /** The image that stands for an entry: its preview, or the first of its images when it has none. */
 export const coverUri = (store: string, entry: string, size: ThumbnailSize) =>
   `reference-store://covers/${size}/${segments(store, entry)}`;
+
+/** What changes when a file does, so a copy of it the view kept is read again. Times are to the second. */
+export const fileVersion = (file: Pick<EntryFile, "modified" | "size">) =>
+  `${file.modified} ${file.size}`;
+
+/**
+ * What changes when the image that stands for an entry may have. A preview copied in keeps its path, so the entry says
+ * so: the library moves `updated` whenever it changes the entry or its files, and a file changed by hand changes its
+ * size.
+ */
+export const coverVersion = (entry: Pick<EntrySummary, "updated" | "size">) =>
+  `${entry.updated} ${entry.size}`;
 
 /** A resource's bytes and type, as the server sends them. */
 export async function readResource(

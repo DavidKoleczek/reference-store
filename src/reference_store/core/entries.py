@@ -52,14 +52,15 @@ class EntryRecord(BaseModel):
     notes: str = ""
     rating: int | None = Field(default=None, ge=1, le=5)
     preview: PreviewRecord | None = None
+    source_published_at: datetime | None = None
     created: datetime
     updated: datetime
     files: dict[str, FileRecord] = {}
 
-    @field_validator("created", "updated")
+    @field_validator("source_published_at", "created", "updated")
     @classmethod
-    def _in_utc(cls, moment: datetime) -> datetime:
-        return in_utc(moment)
+    def _in_utc(cls, moment: datetime | None) -> datetime | None:
+        return None if moment is None else in_utc(moment)
 
 
 def find(name: str, store: str | None) -> tuple[Store, Path]:
@@ -171,6 +172,7 @@ def entry_from(store: str, folder: Path, record: EntryRecord, found: list[Found]
         preview=_preview(found, record),
         file_count=len(files),
         size=sum(file.size for file in files),
+        source_published_at=record.source_published_at,
         created=record.created,
         updated=record.updated,
         folder=folder,

@@ -1,17 +1,19 @@
 import { useEffect } from "react";
 
 import { CopyPath } from "@/components/CopyPath";
-import { Document } from "@/components/Document";
+import { Document, HtmlPage } from "@/components/Document";
 import { Picture } from "@/components/Picture";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
+import { Markdown } from "@/components/ui/markdown";
 import { Tag } from "@/components/ui/tag";
-import { fileUri, thumbnailUri, type FileOf } from "@/lib/api";
+import { fileUri, fileVersion, thumbnailUri, type FileOf } from "@/lib/api";
 import {
   dimensions,
   fileName,
   formatSize,
+  isHtml,
   isImage,
   isText,
 } from "@/lib/format";
@@ -71,7 +73,7 @@ export function Viewer({
     const next = files[index + 1];
     if (next && isImage(next.file)) {
       const { uri, kind } = largest(next.file);
-      readAhead(uri, kind);
+      readAhead(uri, kind, fileVersion(next.file));
     }
   }, [files, index]);
   if (!shown) {
@@ -84,6 +86,7 @@ export function Viewer({
     formatSize(file.size),
   ].filter(Boolean);
   const image = isImage(file) ? largest(file) : null;
+  const version = fileVersion(file);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
@@ -97,11 +100,13 @@ export function Viewer({
               <Picture
                 key={`small:${file.path}`}
                 uri={thumbnailUri(file, "small")}
+                version={version}
                 className="absolute inset-0 size-full object-contain p-4 blur-[1px]"
               />
               <Picture
                 key={image.uri}
                 uri={image.uri}
+                version={version}
                 kind={image.kind}
                 alt={file.description}
                 className="absolute inset-0 size-full bg-canvas object-contain p-4"
@@ -110,9 +115,11 @@ export function Viewer({
           ) : isText(file) ? (
             <div className="absolute inset-0 overflow-y-auto">
               <div className="mx-auto max-w-180 px-6 py-5">
-                <Document file={file} />
+                <Document file={file} version={version} />
               </div>
             </div>
+          ) : isHtml(file) ? (
+            <HtmlPage file={file} version={version} />
           ) : (
             <p className="absolute inset-0 grid place-items-center text-ink-muted">
               {TEXT.viewer.noPreview}
@@ -122,7 +129,11 @@ export function Viewer({
         {(file.description || file.tags.length > 0 || file.notes) && (
           <div className="flex shrink-0 flex-col gap-1.5 border-t border-line px-5 py-3">
             {file.description && <p>{file.description}</p>}
-            {file.notes && <p className="text-ink-muted">{file.notes}</p>}
+            {file.notes && (
+              <Markdown breaks className="text-ink-muted">
+                {file.notes}
+              </Markdown>
+            )}
             {file.tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {file.tags.map((tag) => (

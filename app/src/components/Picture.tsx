@@ -9,18 +9,21 @@ import { cn } from "@/lib/utils";
  */
 export function Picture({
   uri,
+  version,
   kind = "small",
   alt = "",
   fallback,
   className,
 }: {
   uri: string | null;
+  /** What changes when the image does, so a changed one is read again. */
+  version: string;
   kind?: PictureKind;
   alt?: string;
   fallback?: ReactNode;
   className?: string;
 }) {
-  const { url, failed } = usePicture(uri, kind);
+  const { url, failed } = usePicture(uri, kind, version);
   if (uri === null || failed) {
     return fallback ?? null;
   }

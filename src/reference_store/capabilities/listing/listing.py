@@ -19,7 +19,7 @@ from reference_store.models import (
 
 SORTS: tuple[EntrySort, ...] = get_args(EntrySort)
 # The sorts that start with the newest, the best, or the largest. The rest go from A.
-LARGEST_FIRST = ("created", "updated", "rating", "size", "files")
+LARGEST_FIRST = ("created", "updated", "published", "rating", "size", "files")
 
 
 def list_entries(
@@ -102,6 +102,7 @@ def _sort_key(entry: EntrySummary, sort: EntrySort) -> Key:
         "name": names.key(entry.title or entry.name),
         "created": int(entry.created.timestamp()),
         "updated": int(entry.updated.timestamp()),
+        "published": None if entry.source_published_at is None else int(entry.source_published_at.timestamp()),
         "rating": entry.rating,
         "size": entry.size,
         "files": entry.file_count,

@@ -6,7 +6,7 @@ Each side's changes are kept. Where both changed the same thing, the side whose 
 from reference_store.core import entries, names
 from reference_store.core.entries import EntryRecord, FileRecord
 
-PICKED = ("id", "title", "description", "url", "notes", "rating", "preview", "created")
+PICKED = ("id", "title", "description", "url", "notes", "rating", "preview", "source_published_at", "created")
 
 
 def merged(base: EntryRecord | None, ours: EntryRecord, theirs: EntryRecord) -> EntryRecord:

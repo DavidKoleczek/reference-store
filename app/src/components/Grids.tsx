@@ -3,8 +3,20 @@ import type { ReactNode } from "react";
 import { Picture } from "@/components/Picture";
 import { Icon } from "@/components/ui/icon";
 import { Rating } from "@/components/ui/rating";
-import { coverUri, thumbnailUri, type EntrySummary } from "@/lib/api";
-import { fileName, isImage, pastelOf, shownName, siteOf } from "@/lib/format";
+import {
+  coverUri,
+  coverVersion,
+  fileVersion,
+  thumbnailUri,
+  type EntrySummary,
+} from "@/lib/api";
+import {
+  fileName,
+  hasThumbnail,
+  pastelOf,
+  shownName,
+  siteOf,
+} from "@/lib/format";
 import { shownKey, type Shown, type WallRowLayout } from "@/lib/layout";
 import { TEXT } from "@/lib/text";
 import { cn } from "@/lib/utils";
@@ -85,6 +97,7 @@ export function EntryCover({
           ? coverUri(entry.store, entry.name, size)
           : null
       }
+      version={coverVersion(entry)}
       kind={size}
       fallback={fallback}
       // A preview is often the top of a page, so that is the part kept.
@@ -201,7 +214,8 @@ export function FileTile({
         )}
       >
         <Picture
-          uri={isImage(file) ? thumbnailUri(file, "small") : null}
+          uri={hasThumbnail(file) ? thumbnailUri(file, "small") : null}
+          version={fileVersion(file)}
           alt={file.description}
           fallback={
             <span className="grid size-full place-items-center bg-panel text-ink-muted">

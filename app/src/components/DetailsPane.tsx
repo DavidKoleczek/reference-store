@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Textarea } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
+import { Markdown } from "@/components/ui/markdown";
 import { Menu, MenuContent, MenuTrigger } from "@/components/ui/menu";
 import { Rating } from "@/components/ui/rating";
 import { ResizeHandle } from "@/components/ui/resizable";
@@ -26,6 +27,9 @@ import {
   fileName,
   formatDay,
   formatSize,
+  formatTime,
+  fromLocalTime,
+  localTimeOf,
   plural,
   shownName,
 } from "@/lib/format";
@@ -61,6 +65,7 @@ function EditableText({
   value,
   placeholder,
   multiline = true,
+  markdown = false,
   locked,
   onChange,
 }: {
@@ -68,11 +73,50 @@ function EditableText({
   value: string;
   placeholder: string;
   multiline?: boolean;
+  /** It reads as rendered Markdown, with a button to edit it, since a button can't hold its links. */
+  markdown?: boolean;
   /** Why it can't be changed, or null when it can. */
   locked: string | null;
   onChange: (value: string) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  if (draft === null && markdown && value) {
+    return (
+      <div
+        onClick={(event) => {
+          // A link or a button in it does its own thing, and text selected in it is there to be copied.
+          const inside =
+            event.target instanceof Element &&
+            event.target.closest("a, button") !== null;
+          if (
+            locked === null &&
+            !inside &&
+            !window.getSelection()?.toString()
+          ) {
+            setDraft(value);
+          }
+        }}
+        className={cn(
+          "group/text relative -mx-1.5 rounded-sm px-1.5 py-0.5",
+          locked === null && "cursor-text hover:bg-hover",
+        )}
+      >
+        <Markdown breaks>{value}</Markdown>
+        {locked === null && (
+          <Button
+            size="sm"
+            icon
+            aria-label={TEXT.details.edit(label)}
+            title={TEXT.details.edit(label)}
+            onClick={() => setDraft(value)}
+            className="absolute top-0 right-0 bg-panel opacity-0 group-hover/text:opacity-100 focus-visible:opacity-100"
+          >
+            <Icon name="rename" />
+          </Button>
+        )}
+      </div>
+    );
+  }
   if (draft === null) {
     return (
       <button
@@ -128,6 +172,75 @@ function EditableText({
       onChange={(event) => setDraft(event.target.value)}
       onBlur={save}
       onKeyDown={keys}
+    />
+  );
+}
+
+/**
+ * A time that reads as text until it is clicked, then is a date and time field. It is saved once the field is left
+ * or with Enter, and emptying it clears it. Escape, or a time left half typed, puts it back.
+ */
+function EditableTime({
+  label,
+  value,
+  placeholder,
+  locked,
+  onChange,
+}: {
+  label: string;
+  /** A time in ISO 8601, or null for none. */
+  value: string | null;
+  placeholder: string;
+  /** Why it can't be changed, or null when it can. */
+  locked: string | null;
+  onChange: (value: string | null) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const local = value === null ? "" : localTimeOf(value);
+  if (draft === null) {
+    return (
+      <button
+        type="button"
+        aria-label={TEXT.details.edit(label)}
+        disabled={locked !== null}
+        title={locked ?? undefined}
+        onClick={() => setDraft(local)}
+        className={cn(
+          "-mx-1.5 block w-[calc(100%+12px)] rounded-sm px-1.5 py-0.5 text-left outline-none focus-visible:focus-ring enabled:cursor-text enabled:hover:bg-hover",
+          value === null && "text-ink-muted",
+        )}
+      >
+        {value !== null
+          ? formatTime(value)
+          : locked === null
+            ? placeholder
+            : TEXT.common.none}
+      </button>
+    );
+  }
+  const save = (field: HTMLInputElement) => {
+    if (!field.validity.badInput && draft !== local) {
+      onChange(draft ? fromLocalTime(draft) : null);
+    }
+    setDraft(null);
+  };
+  return (
+    <Input
+      type="datetime-local"
+      autoFocus
+      aria-label={label}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={(event) => save(event.currentTarget)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          setDraft(null);
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          save(event.currentTarget);
+        }
+      }}
     />
   );
 }
@@ -261,6 +374,15 @@ function EntryDetails({
           onChange={(link) => onChange({ url: link || null })}
         />
       </Field>
+      <Field label={TEXT.fields.published.label}>
+        <EditableTime
+          label={TEXT.fields.published.label}
+          value={entry.source_published_at}
+          placeholder={TEXT.fields.published.help}
+          locked={locked}
+          onChange={(published) => onChange({ source_published_at: published })}
+        />
+      </Field>
       <Field label={TEXT.fields.tags.label}>
         <TagsEditor
           tags={entry.tags}
@@ -277,6 +399,7 @@ function EntryDetails({
           label={TEXT.fields.notes.label}
           value={entry.notes}
           placeholder={TEXT.fields.notes.help}
+          markdown
           locked={locked}
           onChange={(notes) => onChange({ notes })}
         />
@@ -364,6 +487,7 @@ function FileDetails({
           label={TEXT.fields.notes.label}
           value={file.notes}
           placeholder={TEXT.fields.notes.help}
+          markdown
           locked={locked}
           onChange={(notes) => onChange({ notes })}
         />

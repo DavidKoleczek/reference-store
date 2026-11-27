@@ -34,6 +34,8 @@ export type Settings = {
   widths: Record<string, number>;
   /** Which sections of the filters pane are open. */
   sections: Record<"stores" | "sites" | "tags" | "fileTags", boolean>;
+  /** The sites in the filters pane whose groups are hidden, by name. */
+  closedSites: string[];
   place: Place;
 };
 
@@ -58,6 +60,7 @@ export const DEFAULTS: Settings = {
   },
   widths: {},
   sections: { stores: true, sites: true, tags: true, fileTags: true },
+  closedSites: [],
   place: null,
 };
 
@@ -119,6 +122,9 @@ function checked(value: unknown): Settings {
       ? read.theme
       : DEFAULTS.theme,
     view: read.view === "files" ? "files" : "entries",
+    closedSites: Array.isArray(read.closedSites)
+      ? read.closedSites.filter((site) => typeof site === "string")
+      : DEFAULTS.closedSites,
     entries: {
       ...read.entries,
       layout: read.entries.layout === "details" ? "details" : "icons",

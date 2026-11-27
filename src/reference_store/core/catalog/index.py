@@ -16,8 +16,9 @@ from reference_store.core import config, names
 
 FOLDER = "index"
 FILE = "index.sqlite"
-# Goes up whenever the tables change, so an index made by another version is made again.
-VERSION = 1
+# Goes up whenever the tables or the fields of an entry's summary change, so an index made by another version is made
+# again.
+VERSION = 2
 # How long a process waits for another one that is writing.
 WAIT_SECONDS = 30
 TABLES = """

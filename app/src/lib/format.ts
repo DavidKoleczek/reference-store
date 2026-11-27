@@ -21,6 +21,7 @@ const TEXT_SUFFIXES = [
   ".yml",
   ".toml",
 ];
+const HTML_SUFFIXES = [".html", ".htm"];
 // What the server makes thumbnails of.
 const IMAGE_SUFFIXES = [
   ".png",
@@ -45,9 +46,22 @@ export function isText(file: Pick<EntryFile, "path">): boolean {
   return hasSuffix(file.path, TEXT_SUFFIXES);
 }
 
-/** Whether the server makes a thumbnail of a file. */
+/** Whether a file can be drawn as a web page. */
+export function isHtml(file: Pick<EntryFile, "path">): boolean {
+  return hasSuffix(file.path, HTML_SUFFIXES);
+}
+
+/** Whether a file is an image, which the server makes a thumbnail of. */
 export function isImage(file: Pick<EntryFile, "path">): boolean {
   return hasSuffix(file.path, IMAGE_SUFFIXES);
+}
+
+/**
+ * Whether the server makes a thumbnail of a file: an image, or a web page, which it draws the first time it is asked
+ * for and keeps.
+ */
+export function hasThumbnail(file: Pick<EntryFile, "path">): boolean {
+  return isImage(file) || isHtml(file);
 }
 
 export function fileName(file: Pick<EntryFile, "path">): string {
@@ -101,6 +115,24 @@ const days = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 export function formatDay(time: string): string {
   const date = new Date(time);
   return Number.isNaN(date.getTime()) ? time : days.format(date);
+}
+
+/** A time as it is here, to the minute, as a date and time field holds it, such as `2024-03-05T18:30`. */
+export function localTimeOf(time: string): string {
+  const date = new Date(time);
+  const [month, day, hours, minutes] = [
+    date.getMonth() + 1,
+    date.getDate(),
+    date.getHours(),
+    date.getMinutes(),
+  ].map((part) => String(part).padStart(2, "0"));
+  return `${date.getFullYear()}-${month}-${day}T${hours}:${minutes}`;
+}
+
+/** A time a date and time field holds, in ISO 8601. */
+export function fromLocalTime(local: string): string {
+  // A date and time with no offset is read as local.
+  return new Date(local).toISOString();
 }
 
 const times = new Intl.DateTimeFormat(undefined, {

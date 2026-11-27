@@ -126,6 +126,7 @@ def add_entry(
     preview: NewPreview | None = None,
     files: list[NewFile] | None = None,
     created: datetime | None = None,
+    source_published_at: datetime | None = None,
     store: str | None = None,
 ) -> Entry:
     """Adds an entry: one reference, such as a repo, a website, or a game with its screenshots.
@@ -135,6 +136,7 @@ def add_entry(
 
     A preview's `source` is copied into the entry, and its `file` is one of the `files`. `files` go in as `add_files`
     puts them. `created` keeps the date of a reference that was saved somewhere else before, and is now when left out.
+    `source_published_at` is when the reference itself was first published, as far as is known.
 
     Without `store`, it goes in the project's store when there is one, and in the default store otherwise.
 
@@ -142,7 +144,9 @@ def add_entry(
         ReferenceStoreError: The name breaks a rule or is taken in the store, the rating is outside 1 to 5, the
             preview can't be one, a file can't be added, or there is no store to add it to.
     """
-    return manage_entries.add_entry(name, title, description, url, tags, notes, rating, preview, files, created, store)
+    return manage_entries.add_entry(
+        name, title, description, url, tags, notes, rating, preview, files, created, source_published_at, store
+    )
 
 
 def get_entry(name: str, store: str | None = None) -> Entry:
@@ -177,10 +181,11 @@ def list_entries(
     the entries that link to one of them, each a site, such as `github.com`, or a group on it, such as
     `github.com/octocat`. `without_tags` keeps the entries with no tags, and `without_site` those that link to no site.
 
-    `sort` orders them by name, by when they were added or last changed, by rating, by the size of their files, by
-    how many they have, by their tags, or by their store. Names, tags, and stores go from A, and the title counts as
-    the name when there is one. The rest start with the newest, the best, or the largest. `descending` turns either
-    around. Ties go by name, and an entry with no rating or no tags comes last.
+    `sort` orders them by name, by when they were added or last changed, by when the reference itself was published,
+    by rating, by the size of their files, by how many they have, by their tags, or by their store. Names, tags, and
+    stores go from A, and the title counts as the name when there is one. The rest start with the newest, the best,
+    or the largest. `descending` turns either around. Ties go by name, and an entry with no published time, no
+    rating, or no tags comes last.
 
     `total` says how many entries there are in all. Pass the page's `after` to get the next one.
 
@@ -236,11 +241,13 @@ def update_entry(
     notes: str | NotGiven = NOT_GIVEN,
     rating: int | NotGiven | None = NOT_GIVEN,
     preview: NewPreview | NotGiven | None = NOT_GIVEN,
+    source_published_at: datetime | NotGiven | None = NOT_GIVEN,
     add_tags: list[str] | None = None,
     remove_tags: list[str] | None = None,
     store: str | None = None,
 ) -> Entry:
-    """Changes an entry, and keeps any field left out. None clears `title`, `url`, `rating`, or `preview`.
+    """Changes an entry, and keeps any field left out. None clears `title`, `url`, `rating`, `preview`, or
+    `source_published_at`.
 
     Tags are added and removed rather than replaced, so two callers tagging the same entry don't undo each other.
 
@@ -254,7 +261,7 @@ def update_entry(
             removed, or the preview can't be one.
     """
     return manage_entries.update_entry(
-        name, title, description, url, notes, rating, preview, add_tags, remove_tags, store
+        name, title, description, url, notes, rating, preview, source_published_at, add_tags, remove_tags, store
     )
 
 

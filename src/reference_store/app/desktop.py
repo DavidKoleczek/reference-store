@@ -16,8 +16,11 @@ def show(path: Path) -> None:
     if not path.exists():
         raise ReferenceStoreError(f"{path} isn't there any more.")
     is_file = path.is_file()
+    command: str | list[str]
     if sys.platform == "win32":
-        command = ["explorer", f"/select,{path}"] if is_file else ["explorer", str(path)]
+        # Explorer can't read `/select,` inside quotes, and opens Documents instead. A list would quote the whole
+        # argument when the path has a space, so only the path is quoted. A Windows path can't hold a quote to end it.
+        command = f'explorer /select,"{path}"' if is_file else ["explorer", str(path)]
     elif sys.platform == "darwin":
         command = ["open", "-R", str(path)] if is_file else ["open", str(path)]
     else:

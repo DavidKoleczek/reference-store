@@ -69,14 +69,14 @@ shared: pulled 2 commits, pushed 1.
 ```
 reference-store add-entry <name> [--title <text>] [--description <text>] [--url <url>] [--tag <tag>]...
     [--notes <text>] [--rating <1-5>] [--preview <image>] [--preview-file <path>] [--preview-url <url>]
-    [--file <source>]... [--created <time>] [--store <store>]
+    [--file <source>]... [--created <time>] [--source-published-at <time>] [--store <store>]
 reference-store get-entry <name> [--store <store>]
 ```
 
 - `tags`: repeat `--tag` for each one.
 - `preview`: `--preview` is the image to copy in, `--preview-file` one of the files added, and `--preview-url` where it came from.
 - `files`: repeat `--file` for each one. Each goes at the top of the entry under its own name. `add-files` puts one anywhere else, and says what it is.
-- `created`: a date or a time, such as `2026-01-05` or `2026-01-05T18:30:00Z`.
+- `created` and `source_published_at`: a date or a time, such as `2026-01-05` or `2026-01-05T18:30:00Z`.
 
 Both print the entry: a line for each field that has something in it, then a line for each file with its size, its tags, and its description.
 
@@ -91,6 +91,7 @@ url: https://example.com/game-1
 tags: game, puzzle
 rating: 4
 preview: D:\references\game-1\.preview.png
+published: 2025-12-14 11:00
 created: 2026-01-05 13:30
 updated: 2026-01-09 04:12
 files: 2, 1.3 MB
@@ -104,15 +105,15 @@ Times are local. With `--json`, they are in UTC, and each file also has its note
 
 ```
 reference-store update-entry <name> [--title <text>] [--description <text>] [--url <url>] [--notes <text>]
-    [--rating <1-5>] [--preview <image>] [--preview-file <path>] [--preview-url <url>] [--add-tag <tag>]...
-    [--remove-tag <tag>]... [--clear <field>]... [--store <store>]
+    [--rating <1-5>] [--preview <image>] [--preview-file <path>] [--preview-url <url>]
+    [--source-published-at <time>] [--add-tag <tag>]... [--remove-tag <tag>]... [--clear <field>]... [--store <store>]
 reference-store rename-entry <name> <new-name> [--store <store>]
 reference-store move-entry <name> <to-store> [--store <store>]
 reference-store delete-entry <name> [--store <store>]
 ```
 
 - Leaving an option out is leaving the argument out, so what is there stays.
-- `--clear` empties `title`, `description`, `url`, `notes`, `rating`, or `preview`. Windows PowerShell 5.1 drops an empty argument such as `--description ""`, so `--clear description` works everywhere.
+- `--clear` empties `title`, `description`, `url`, `notes`, `rating`, `preview`, or `source_published_at`. Windows PowerShell 5.1 drops an empty argument such as `--description ""`, so `--clear description` works everywhere.
 - `add_tags` and `remove_tags`: repeat `--add-tag` and `--remove-tag` for each one.
 - `preview`: `--preview` is an image to copy in, `--preview-file` one of the entry's files, and `--preview-url` where it came from. `--preview-url` alone keeps the image.
 
@@ -132,7 +133,7 @@ reference-store list-sites [--store <store>]
 - `tag_match`: `--any` for `any`.
 - `descending`: `--descending` or `--ascending`. Without either, the sort's own order.
 
-`list-entries` prints a line for each entry: its name, its title in brackets, its store, when it was added (or last changed, with `--sort updated`), its files, its rating, and its tags. The last line says how many there are, and what to pass for the next page.
+`list-entries` prints a line for each entry: its name, its title in brackets, its store, when it was added (or last changed with `--sort updated`, or published with `--sort published`), its files, its rating, and its tags. The last line says how many there are, and what to pass for the next page.
 
 ```console
 $ reference-store list-entries --sort name --limit 2

@@ -79,6 +79,17 @@ function entryColumns(
       cell: (entry) => formatTime(entry.created),
     },
     {
+      key: "published",
+      label: TEXT.columns.published,
+      sort: "published",
+      width: 150,
+      mono: true,
+      cell: (entry) =>
+        entry.source_published_at === null
+          ? ""
+          : formatTime(entry.source_published_at),
+    },
+    {
       key: "files",
       label: TEXT.columns.files,
       sort: "files",

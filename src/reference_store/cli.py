@@ -4,7 +4,9 @@ from collections.abc import Generator
 import contextlib
 from datetime import datetime
 from enum import StrEnum
+import io
 from pathlib import Path
+import sys
 import time
 from typing import Annotated
 
@@ -32,6 +34,9 @@ from reference_store.models import (
 from reference_store.skill.skill import DISTRIBUTION
 
 JSON_HELP = "Print the result as JSON."
+PUBLISHED_HELP = (
+    "When the reference itself was first published, as far as is known, such as 2026-01-05 or 2026-01-05T18:30:00Z."
+)
 STORES = TypeAdapter(list[Store])
 SYNCS = TypeAdapter(list[StoreSync])
 TAGS = TypeAdapter(list[TagCount])
@@ -48,6 +53,7 @@ class Clearable(StrEnum):
     NOTES = "notes"
     RATING = "rating"
     PREVIEW = "preview"
+    SOURCE_PUBLISHED_AT = "source_published_at"
 
 
 class Field(StrEnum):
@@ -154,6 +160,7 @@ def _size(count: int) -> str:
 
 def _describe_entry(entry: Entry) -> str:
     """The entry as a line for each field that has something in it, then a line for each file."""
+    published = entry.source_published_at
     fields = [
         ("name", entry.name),
         ("title", entry.title),
@@ -165,6 +172,7 @@ def _describe_entry(entry: Entry) -> str:
         ("notes", entry.notes),
         ("rating", None if entry.rating is None else str(entry.rating)),
         ("preview", str(entry.preview.path) if entry.preview else None),
+        ("published", f"{published.astimezone():%Y-%m-%d %H:%M}" if published else None),
         ("created", f"{entry.created.astimezone():%Y-%m-%d %H:%M}"),
         ("updated", f"{entry.updated.astimezone():%Y-%m-%d %H:%M}"),
         ("files", f"{entry.file_count}, {_size(entry.size)}" if entry.files else "none"),
@@ -184,11 +192,11 @@ def _counted(count: int, one: str, many: str) -> str:
 
 def _describe_summary(entry: EntrySummary, sort: EntrySort) -> str:
     """The entry as one line: its name and title, then its store, a date, its files, its rating, and its tags."""
-    moment = entry.updated if sort == "updated" else entry.created
+    moment = {"updated": entry.updated, "published": entry.source_published_at}.get(sort, entry.created)
     files = _counted(entry.file_count, "file", "files")
     facts = [
         entry.store,
-        f"{moment.astimezone():%Y-%m-%d}",
+        f"{moment.astimezone():%Y-%m-%d}" if moment else "date unknown",
         f"{files}, {_size(entry.size)}" if entry.file_count else files,
     ]
     if entry.rating is not None:
@@ -384,6 +392,7 @@ def add_entry(
     created: Annotated[
         str | None, typer.Option(help="When it was first saved, such as 2026-01-05 or 2026-01-05T18:30:00Z.")
     ] = None,
+    source_published_at: Annotated[str | None, typer.Option(help=PUBLISHED_HELP)] = None,
     store: Annotated[
         str | None, typer.Option(help="The store to add it to. Without it, the project's store or the default.")
     ] = None,
@@ -398,7 +407,18 @@ def add_entry(
     files = [NewFile(source=source) for source in file or []]
     with _reported():
         entry = lib.add_entry(
-            name, title, description, url, tag, notes, rating, new_preview, files, _moment(created, "--created"), store
+            name,
+            title,
+            description,
+            url,
+            tag,
+            notes,
+            rating,
+            new_preview,
+            files,
+            _moment(created, "--created"),
+            _moment(source_published_at, "--source-published-at"),
+            store,
         )
     typer.echo(entry.model_dump_json(indent=2) if json else _describe_entry(entry))
 
@@ -433,13 +453,15 @@ def update_entry(
     preview_url: Annotated[
         str | None, typer.Option(help="Where the preview image came from. On its own, it keeps the image.")
     ] = None,
+    source_published_at: Annotated[str | None, typer.Option(help=PUBLISHED_HELP)] = None,
     add_tag: Annotated[list[str] | None, typer.Option(help="A tag to add. Repeat it for each one.")] = None,
     remove_tag: Annotated[list[str] | None, typer.Option(help="A tag to remove. Repeat it for each one.")] = None,
     clear: Annotated[
         list[Clearable] | None,
         typer.Option(
             metavar="<list[field]>",
-            help="A field to clear: title, description, url, notes, rating, or preview. Repeat it for each one.",
+            help="A field to clear: title, description, url, notes, rating, preview, or source_published_at. Repeat "
+            "it for each one.",
             show_default=False,
         ),
     ] = None,
@@ -460,9 +482,12 @@ def update_entry(
         ("url", url),
         ("notes", notes),
         ("rating", rating),
+        ("source_published_at", source_published_at),
     ):
         if field in cleared and value is not None:
-            raise typer.BadParameter(f"--{field} and --clear {field} can't both be given.", param_hint="--clear")
+            raise typer.BadParameter(
+                f"--{field.replace('_', '-')} and --clear {field} can't both be given.", param_hint="--clear"
+            )
     previewed = preview is not None or preview_file is not None or preview_url is not None
     if "preview" in cleared and previewed:
         raise typer.BadParameter(
@@ -481,6 +506,11 @@ def update_entry(
             else NewPreview(source=preview, file=preview_file, url=preview_url)
             if previewed
             else NOT_GIVEN,
+            source_published_at=None
+            if "source_published_at" in cleared
+            else NOT_GIVEN
+            if source_published_at is None
+            else _moment(source_published_at, "--source-published-at"),
             add_tags=add_tag,
             remove_tags=remove_tag,
             store=store,
@@ -566,8 +596,8 @@ def list_entries(
         EntrySort,
         typer.Option(
             metavar="<sort>",
-            help="What to order them by: name, created, updated, rating, size, files, tags, or store. Names, tags, "
-            "and stores go from A. The rest start with the newest, the best, or the largest.",
+            help="What to order them by: name, created, updated, published, rating, size, files, tags, or store. "
+            "Names, tags, and stores go from A. The rest start with the newest, the best, or the largest.",
         ),
     ] = "created",
     descending: Annotated[
@@ -584,7 +614,7 @@ def list_entries(
 ) -> None:
     """List the entries a page at a time, newest first unless sorted otherwise.
 
-    The title shows in brackets after the name, and the date is when the entry was added, or last changed with --sort updated.
+    The title shows in brackets after the name, and the date is when the entry was added, last changed with --sort updated, or published with --sort published.
     """
     with _reported():
         listing = lib.list_entries(
@@ -974,5 +1004,10 @@ def app_(
 
 def main() -> None:
     """Runs the command line."""
+    # Windows gives a pipe its code page rather than UTF-8, and printing a character the code page lacks, such as an
+    # emoji, would fail.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
     # Click expands wildcards in arguments on Windows, which would turn a glob pattern into the files it matches here.
     app(windows_expand_args=False)

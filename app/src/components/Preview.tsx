@@ -1,12 +1,14 @@
 import type { ReactNode } from "react";
 
-import { Document } from "@/components/Document";
+import { Document, HtmlPage } from "@/components/Document";
 import { Picture } from "@/components/Picture";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   coverUri,
+  coverVersion,
+  fileVersion,
   thumbnailUri,
   type EntryFile,
   type EntrySummary,
@@ -14,6 +16,7 @@ import {
 import {
   dimensions,
   formatSize,
+  isHtml,
   isImage,
   isText,
   pastelOf,
@@ -33,18 +36,20 @@ const FITTED = "absolute inset-0 size-full object-contain p-3";
 function Fitted({
   small,
   large,
+  version,
   fallback,
 }: {
   small: string;
   large: string;
+  version: string;
   fallback: ReactNode;
 }) {
-  const read = usePicture(large, "large");
+  const read = usePicture(large, "large", version);
   if (read.failed) {
     return fallback;
   }
   return read.url === null ? (
-    <Picture key={small} uri={small} className={FITTED} />
+    <Picture key={small} uri={small} version={version} className={FITTED} />
   ) : (
     <img
       key={large}
@@ -84,8 +89,8 @@ function Source({ entry }: { entry: EntrySummary }) {
 }
 
 /**
- * What is picked, shown as large as the room allows: an image, a text file as it reads, or the image that stands for
- * an entry. A line under it says what it is.
+ * What is picked, shown as large as the room allows: an image, a text file as it reads, a web page as it is drawn, or
+ * the image that stands for an entry. A line under it says what it is.
  */
 export function Preview({
   entry,
@@ -112,7 +117,9 @@ export function Preview({
           large: coverUri(entry.store, entry.name, "large"),
         }
       : null;
+  const version = file ? fileVersion(file) : coverVersion(entry);
   const text = of !== null && isText(of);
+  const page = of !== null && isHtml(of);
   const tile = (
     <div className="absolute inset-0 grid place-items-center">
       <span
@@ -132,11 +139,18 @@ export function Preview({
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-canvas">
       <div className="relative min-h-0 flex-1">
         {image !== null ? (
-          <Fitted small={image.small} large={image.large} fallback={tile} />
+          <Fitted
+            small={image.small}
+            large={image.large}
+            version={version}
+            fallback={tile}
+          />
         ) : of !== null && text ? (
           <div className="absolute inset-0 overflow-y-auto bg-panel px-4 py-3">
-            <Document file={of} />
+            <Document file={of} version={version} />
           </div>
+        ) : of !== null && page ? (
+          <HtmlPage file={of} version={version} />
         ) : (
           tile
         )}
@@ -154,7 +168,7 @@ export function Preview({
             </>
           )}
         </span>
-        {file !== null && (image !== null || text) && (
+        {file !== null && (image !== null || text || page) && (
           <Tooltip content={TEXT.preview.viewLargeTip} side="top">
             <Button
               size="sm"

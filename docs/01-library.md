@@ -141,6 +141,7 @@ class EntrySummary(BaseModel):
     preview: Preview | None
     file_count: int
     size: int  # of all its files, in bytes
+    source_published_at: datetime | None  # when the reference itself was first published, as far as is known
     created: datetime
     updated: datetime
 
@@ -167,9 +168,10 @@ class Preview(BaseModel):
 
 - `name` is unique in its store, and is the name of the entry's folder. [Names and paths](#names-and-paths) says what it can be.
 - `title` is for a title the name can't be, such as one with a colon. Every function still takes the `name`.
-- `description` says what the reference is. `notes` is free text for anything else, such as why it was saved.
+- `description` says what the reference is. `notes` is free text for anything else, such as why it was saved. The app shows it as Markdown.
 - A tag is any short text, such as `ux` or `Concept Art`. Tags that differ only by case are the same tag.
 - `preview` is an image that shows what the entry is about: a PNG, JPEG, WebP, GIF, AVIF, BMP, or SVG.
+- `source_published_at` is when the reference itself was first published, as far as is known, and None when that isn't known.
 - `created` is when the entry was added, and `updated` when it last changed, renaming and moving included. Times are kept in UTC, and one passed with no time zone is taken as local time.
 
 ### `add_entry`
@@ -186,6 +188,7 @@ def add_entry(
     preview: NewPreview | None = None,
     files: list[NewFile] | None = None,
     created: datetime | None = None,
+    source_published_at: datetime | None = None,
     store: str | None = None,
 ) -> Entry
 
@@ -201,6 +204,7 @@ Adds an entry with what it is given. It never fetches anything.
 - `preview`: a `source` is copied into the entry, and a `file` uses one of the entry's own files.
 - `files`: copied in as [`add_files`](#files-in-an-entry) does.
 - `created`: pass it to keep the date of a reference that was saved somewhere else before. Without it, now.
+- `source_published_at`: when the reference itself was first published, as far as is known.
 
 ### `get_entry`
 
@@ -222,7 +226,7 @@ def list_entries(
     without_tags: bool = False,
     without_site: bool = False,
     store: str | None = None,
-    sort: Literal["name", "created", "updated", "rating", "size", "files", "tags", "store"] = "created",
+    sort: Literal["name", "created", "updated", "published", "rating", "size", "files", "tags", "store"] = "created",
     descending: bool | None = None,
     limit: int = 100,
     after: str | None = None,
@@ -244,7 +248,7 @@ Returns a page of entries.
 - `sites`: keeps the entries whose `url` is on one of them. Each is a site, such as `github.com`, or one group on it, such as `github.com/octocat`. See [`list_sites`](#list_sites).
 - `without_tags`: keeps the entries with no tags.
 - `without_site`: keeps the entries that link to no site, which are the ones `list_sites` doesn't count.
-- `sort`: names, tags, and stores go from A, and the rest start with the newest, the best, or the largest. The title counts as the name, and an entry's tags are read as one line of text. Ties go by name, and an entry with no rating or no tags comes last.
+- `sort`: names, tags, and stores go from A, and the rest start with the newest, the best, or the largest. The title counts as the name, and an entry's tags are read as one line of text. `published` is `source_published_at`. Ties go by name, and an entry with no published time, no rating, or no tags comes last.
 - `descending`: turns the sort's order around.
 - `after`: the `after` of the page before, to get the next one with the same `sort`. It marks the last entry shown, so entries added or removed in between don't make the next page skip or repeat any.
 
@@ -259,13 +263,14 @@ def update_entry(
     notes: str | NotGiven = NOT_GIVEN,
     rating: int | NotGiven | None = NOT_GIVEN,
     preview: NewPreview | NotGiven | None = NOT_GIVEN,
+    source_published_at: datetime | NotGiven | None = NOT_GIVEN,
     add_tags: list[str] | None = None,
     remove_tags: list[str] | None = None,
     store: str | None = None,
 ) -> Entry
 ```
 
-Changes an entry. A field left out is `NOT_GIVEN` and stays as it is, and None clears `title`, `url`, `rating`, or `preview`. A call that changes nothing leaves `updated` as it was.
+Changes an entry. A field left out is `NOT_GIVEN` and stays as it is, and None clears `title`, `url`, `rating`, `preview`, or `source_published_at`. A call that changes nothing leaves `updated` as it was.
 
 - `add_tags` and `remove_tags`: tags are added and removed rather than replaced, so two callers tagging the same entry don't undo each other. A tag can't be in both.
 - `preview`: as in `add_entry`. One with only a `url` keeps the image and changes where it came from. A copied-in image is deleted once it is no longer the preview.
@@ -445,6 +450,7 @@ What the library keeps for itself starts with a dot, so it is easy to tell from 
     "file": ".preview.png",
     "url": "https://example.com/game-1/cover.png"
   },
+  "source_published_at": "2025-12-14T16:00:00Z",
   "created": "2026-01-05T18:30:00Z",
   "updated": "2026-01-09T09:12:00Z",
   "files": {
@@ -601,6 +607,7 @@ Listing, grep, and glob return a page at a time, so a caller never has to hold a
 A page of `list_entries` or `glob_files` from a store of ten thousand entries takes a fraction of a second.
 For that, the library keeps an index of what the stores hold, in `index/` beside the [configuration](#configuration), and listing, grep, and glob read it.
 The stores' files are still what counts. The index is made from them, and can be deleted at any time.
+After an update that changes what the index keeps, the first read makes it again.
 The first read of a store makes its part of the index, which takes a few seconds for ten thousand entries.
 
 How soon a change shows in listing, grep, and glob depends on what made it:

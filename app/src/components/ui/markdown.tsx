@@ -1,5 +1,6 @@
 import { useRef, useState, type ComponentProps } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 import { Button } from "@/components/ui/button";
@@ -158,15 +159,18 @@ const COMPONENTS: Components = {
 /** What an agent wrote, rendered as Markdown with GitHub's extensions; raw HTML in it is left out. */
 export function Markdown({
   children,
+  breaks = false,
   className,
 }: {
   children: string;
+  /** Each line break shows as one, as in text typed into a field rather than a Markdown file. */
+  breaks?: boolean;
   className?: string;
 }) {
   return (
     <div className={cn("min-w-0 wrap-break-word text-ink", className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={breaks ? [remarkGfm, remarkBreaks] : [remarkGfm]}
         components={COMPONENTS}
         skipHtml
       >

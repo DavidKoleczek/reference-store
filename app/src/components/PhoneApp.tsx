@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { LoadingMark } from "@/components/ui/loading-mark";
+import { Markdown } from "@/components/ui/markdown";
 import { Notice } from "@/components/ui/notice";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Rating } from "@/components/ui/rating";
@@ -26,7 +27,7 @@ import {
 } from "@/lib/api";
 import { describe } from "@/lib/errors";
 import { toggleTag } from "@/lib/filters";
-import { shownName, siteOf } from "@/lib/format";
+import { formatDay, shownName, siteOf } from "@/lib/format";
 import { app } from "@/lib/host";
 import { shownKey, wallLayout, type Shown } from "@/lib/layout";
 import { useCounts, useEntry } from "@/lib/library";
@@ -148,7 +149,12 @@ function EntryScreen({
               <div>
                 <h2 className="text-title">{shownName(entry)}</h2>
                 <p className="mono-annotation text-ink-muted">
-                  {[entry.title && entry.name, entry.store]
+                  {[
+                    entry.title && entry.name,
+                    entry.store,
+                    entry.source_published_at &&
+                      formatDay(entry.source_published_at),
+                  ]
                     .filter(Boolean)
                     .join("  ")}
                 </p>
@@ -177,9 +183,9 @@ function EntryScreen({
                 </div>
               )}
               {entry.notes && (
-                <p className="whitespace-pre-wrap text-ink-muted">
+                <Markdown breaks className="text-ink-muted">
                   {entry.notes}
-                </p>
+                </Markdown>
               )}
             </div>
             {files.length > 0 && (

@@ -1,7 +1,10 @@
 """Adding entries and reading them back with their files, from the CLI."""
 
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 from typing import Any
 
 import pytest
@@ -38,12 +41,14 @@ def test_an_entry_is_kept_as_plain_files_and_read_back_with_the_files_put_there_
         "--preview", str(cover),
         "--preview-url", "https://example.com/game-1/cover.png",
         "--created", "2026-01-05T18:30:00Z",
+        "--source-published-at", "2024-03-05T09:15:00+01:00",
     )  # fmt: skip
     folder = workspace / "main" / "game-1"
     assert Path(added["folder"]) == folder
     saved = json.loads((folder / ".entry.json").read_text(encoding="utf-8"))
     assert list(saved) == [
-        "id", "title", "description", "url", "tags", "notes", "rating", "preview", "created", "updated", "files",
+        "id", "title", "description", "url", "tags", "notes", "rating", "preview", "source_published_at", "created",
+        "updated", "files",
     ]  # fmt: skip
     assert saved | {"id": None, "updated": None} == {
         "id": None,
@@ -54,6 +59,7 @@ def test_an_entry_is_kept_as_plain_files_and_read_back_with_the_files_put_there_
         "notes": "Good menus.",
         "rating": 4,
         "preview": {"file": ".preview.png", "url": "https://example.com/game-1/cover.png"},
+        "source_published_at": "2024-03-05T08:15:00Z",
         "created": "2026-01-05T18:30:00Z",
         "updated": None,
         "files": {},
@@ -74,7 +80,7 @@ def test_an_entry_is_kept_as_plain_files_and_read_back_with_the_files_put_there_
 
     entry = run("get-entry", "GAME-1")
     assert entry["name"] == "game-1"
-    assert entry["id"] == added["id"]
+    assert (entry["id"], entry["source_published_at"]) == (added["id"], "2024-03-05T08:15:00Z")
     assert [file["path"] for file in entry["files"]] == [
         ".gitignore",
         "notes.md",
@@ -94,6 +100,7 @@ def test_an_entry_is_kept_as_plain_files_and_read_back_with_the_files_put_there_
     assert run("get-entry", "game-1")["preview"] is None
     text = runner.invoke(app, ["get-entry", "game-1"]).stdout
     assert "title: Game 1: The First One\n" in text
+    assert "\npublished: 2024-03-0" in text
     assert "  shots/menu.png  4 bytes  [ux]  The pause menu.\n" in text
 
 
@@ -153,3 +160,18 @@ def test_entries_go_to_the_right_store_and_are_found_in_priority_order(
     (workspace / "second").rename(workspace / "away")
     refused("get-entry", "game-1", "--store", "second")
     assert run("get-entry", "game-1")["store"] == "first"
+
+
+def test_what_is_printed_to_a_pipe_keeps_every_character(workspace: Path) -> None:
+    run("add-store", "main", "main")
+    star = chr(0x2605)
+    run("add-entry", "game-1", "--description", f"A co-op puzzle game. {star}")
+    command = [sys.executable, "-c", "from reference_store.cli import main; main()"]
+    # The code page Windows gives a pipe, which has no star.
+    on_windows = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+
+    shown = subprocess.run([*command, "get-entry", "game-1"], env=on_windows, capture_output=True, check=False)
+    assert shown.returncode == 0, shown.stderr
+    assert f"description: A co-op puzzle game. {star}" in shown.stdout.decode("utf-8")
+    missing = subprocess.run([*command, "get-entry", f"game-{star}"], env=on_windows, capture_output=True, check=False)
+    assert (missing.returncode, f"game-{star}" in missing.stderr.decode("utf-8")) == (1, True)

@@ -11,6 +11,8 @@ from PIL import Image
 import pytest
 
 from reference_store import lib
+from reference_store.app import webpages
+from reference_store.models import NewFile
 
 UPLOAD = "0123456789abcdef0123456789abcdef"
 
@@ -112,3 +114,45 @@ async def test_the_app_lists_adds_changes_and_deletes_through_its_tools(workspac
         await call(client, "delete_entry", name="game-one")
         assert not (workspace / "main" / "game-one").exists()
         assert (await call(client, "list_entries"))["total"] == 0
+
+
+@pytest.mark.skipif(webpages.browser() is None, reason="Pages are drawn by Chrome, Edge, or Chromium.")
+async def test_an_html_file_has_a_picture_of_its_page_drawn_once_light_and_without_its_scripts(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The browser is in dark mode, as it is on a machine that is, and the page has a dark mode of its own.
+    monkeypatch.setattr(webpages, "QUIET", [*webpages.QUIET, "--force-dark-mode"])
+    page = workspace / "page.html"
+    page.write_text(
+        "<!doctype html><style>body { background: #d33 } @media (prefers-color-scheme: dark) { body { background: "
+        "#000 } }</style><body><script>document.body.style.background = '#36c'</script>",
+        encoding="utf-8",
+    )
+    lib.add_store("main", str(workspace / "main"))
+    lib.add_entry(name="saved", files=[NewFile(source=page)], store="main")
+    uri = "reference-store://thumbnails/small/main/saved/page.html"
+    async with Client(lib.app_server().server) as client:
+        picture = Image.open(BytesIO(await read(client, uri)))
+        assert (picture.format, picture.size) == ("WEBP", (384, 480))
+        pixel = picture.convert("RGB").getpixel((192, 400))
+        assert isinstance(pixel, tuple)
+        red, _, blue = pixel
+        assert red > 200
+        assert blue < 100
+
+        def drawn_again(path: Path) -> bytes:
+            raise AssertionError(f"{path.name} was drawn again")
+
+        monkeypatch.setattr(webpages, "screenshot", drawn_again)
+        assert Image.open(BytesIO(await read(client, uri))).size == (384, 480)
+
+
+async def test_an_html_file_has_no_picture_without_a_browser(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(webpages, "browser", lambda: None)
+    page = workspace / "page.html"
+    page.write_text("<!doctype html><p>A page", encoding="utf-8")
+    lib.add_store("main", str(workspace / "main"))
+    lib.add_entry(name="saved", files=[NewFile(source=page)], store="main")
+    async with Client(lib.app_server().server) as client:
+        with pytest.raises(MCPError, match="no Chrome, Edge, or Chromium"):
+            await read(client, "reference-store://thumbnails/small/main/saved/page.html")
