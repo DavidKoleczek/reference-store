@@ -72,12 +72,14 @@ jobs:
           enable-cache: false
 
       # The app's checks pass without pnpm, so it has to be found for them to check that the committed build is current.
-      # Without its install scripts, which newer npm releases skip anyway, pnpm runs its exe through Node.
+      # Without its install scripts, which newer npm releases skip anyway, the `pnpm` npm links to is a stand-in that
+      # only a shell can start, and the checks start pnpm from Python. Its package for this platform has the exe.
       - name: Install pnpm
         run: |
           npm ci --prefix .github/pnpm --ignore-scripts --no-audit --no-fund
-          .github/pnpm/node_modules/.bin/pnpm --version
-          echo "$GITHUB_WORKSPACE/.github/pnpm/node_modules/.bin" >> "$GITHUB_PATH"
+          exe="$GITHUB_WORKSPACE/.github/pnpm/node_modules/@pnpm/exe.win32-$(node --print process.arch)"
+          "$exe/pnpm.exe" --version
+          echo "$exe" >> "$GITHUB_PATH"
 
       - name: Precommit checks
         run: uvx --exclude-newer "5 days" prek run uv-lock app-build --all-files --show-diff-on-failure
